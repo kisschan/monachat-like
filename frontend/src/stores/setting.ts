@@ -16,6 +16,7 @@ type StorageKey =
   | "sound"
   | "time"
   | "kbMode"
+  | "extention"
   | "typingMode"
   | "scrollableLog"
   | "descendingLog"
@@ -99,6 +100,9 @@ export const useSettingStore = defineStore("setting", () => {
   const isKBMode = ref(getBooleanValueWithDefault("kbMode", false)); // KBモード ON/OFF
   const updateIsKBMode = (value: boolean) =>
     updateBooleanValueWithPerpetuation(isKBMode, "kbMode", value);
+  const isExtention = ref(getBooleanValueWithDefault("extention", false)); // KBモード ON/OFF
+  const updateIsExtention = (value: boolean) =>
+    updateBooleanValueWithPerpetuation(isExtention, "extention", value);
   const isDarkMode = ref(getBooleanValueWithDefault("darkMode", false));
   const updateIsDarkMode = (value: boolean) =>
     updateBooleanValueWithPerpetuation(isDarkMode, "darkMode", value);
@@ -132,6 +136,8 @@ export const useSettingStore = defineStore("setting", () => {
     updateIsKBMode,
     isDarkMode,
     updateIsDarkMode,
+    isExtention,
+    updateIsExtention,
     isTypingMode,
     updateIsTypingMode,
     isScrollableLog,
