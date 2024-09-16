@@ -44,7 +44,11 @@
             <SelectButton v-model="logLineNumber" :options="options" aria-labelledby="basic" />
           </div>
           <div class="field-wrapper">
-            <SwitchField v-model="isExtention" label="拡張機能をONにする" label-id="extension" />
+            <SwitchField
+              v-model="isExtention"
+              label="拡張機能をONにする(要リロード)"
+              label-id="extension"
+            />
           </div>
           <div class="field-wrapper">
             <PrimeButton
