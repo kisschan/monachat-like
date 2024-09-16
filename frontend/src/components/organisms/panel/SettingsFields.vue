@@ -82,6 +82,7 @@ const isKBMode = computed({
   get: () => settingStore.isKBMode,
   set: (value) => settingStore.updateIsKBMode(value),
 });
+
 const isExtention = computed({
   get: () => settingStore.isExtension,
   set: (value) => settingStore.updateIsExtension(value),

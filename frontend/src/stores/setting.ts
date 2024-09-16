@@ -127,6 +127,7 @@ export const useSettingStore = defineStore("setting", () => {
   });
   const updateLogLineNumber = (value: string) =>
     updateValueWithPerpetuation(logLineNumber, "logLineNumber", value);
+
   const settingSetupResult = {
     selectedVolume,
     updateSelectedVolume,
