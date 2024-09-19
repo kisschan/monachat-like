@@ -100,7 +100,7 @@ export const useSettingStore = defineStore("setting", () => {
   const isKBMode = ref(getBooleanValueWithDefault("kbMode", false)); // KBモード ON/OFF
   const updateIsKBMode = (value: boolean) =>
     updateBooleanValueWithPerpetuation(isKBMode, "kbMode", value);
-  const isExtension = ref(getBooleanValueWithDefault("extension", true)); // 拡張機能　ON/OFF
+  const isExtension = ref(getBooleanValueWithDefault("extension", false)); // 拡張機能　ON/OFF
   const updateIsExtension = (value: boolean) =>
     updateBooleanValueWithPerpetuation(isExtension, "extension", value);
   const isDarkMode = ref(getBooleanValueWithDefault("darkMode", false));
