@@ -44,6 +44,13 @@
             <SelectButton v-model="logLineNumber" :options="options" aria-labelledby="basic" />
           </div>
           <div class="field-wrapper">
+            <SwitchField
+              v-model="isExtention"
+              label="拡張機能をONにする(要リロード)"
+              label-id="extension"
+            />
+          </div>
+          <div class="field-wrapper">
             <PrimeButton
               label="ログを削除する"
               icon="pi pi-trash"
@@ -79,6 +86,12 @@ const isKBMode = computed({
   get: () => settingStore.isKBMode,
   set: (value) => settingStore.updateIsKBMode(value),
 });
+
+const isExtention = computed({
+  get: () => settingStore.isExtension,
+  set: (value) => settingStore.updateIsExtension(value),
+});
+
 const isTypingMode = computed({
   get: () => settingStore.isTypingMode,
   set: (value) => settingStore.updateIsTypingMode(value),
