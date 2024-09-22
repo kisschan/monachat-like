@@ -7,7 +7,7 @@
       overflowY: isScrollableLog ? 'scroll' : 'auto',
     }"
   >
-    <template v-for="msg in visibleLogMessages" :key="msg">
+    <template v-for="msg in visibleLogMessages" :key="msg.uniqueId">
       <LogRow :msg="msg" />
     </template>
     <div v-if="!isDescendingLog && visibleLogMessages.length !== 0" class="log-info-container">
