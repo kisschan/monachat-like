@@ -5,4 +5,5 @@ export type Log = {
   visibleOnReceived: string;
   color: string;
   ihash: string;
+  uniqueId: string;
 };

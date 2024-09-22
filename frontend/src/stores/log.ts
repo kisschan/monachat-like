@@ -5,6 +5,7 @@ import { useSettingStore } from "@/stores/setting";
 import { useUsersStore } from "./users";
 import Color from "./color";
 import { ChatMessage } from "../domain/type";
+import { v4 as uuidv4 } from "uuid";
 
 export const useLogStore = defineStore("log", () => {
   const logs = ref<
@@ -15,6 +16,7 @@ export const useLogStore = defineStore("log", () => {
       visibleOnReceived: boolean;
       color: string;
       ihash: string;
+      uniqueId: string;
     }[]
   >([]);
 
@@ -25,6 +27,7 @@ export const useLogStore = defineStore("log", () => {
     visibleOnReceived: boolean;
     color: string;
     ihash: string;
+    uniqueId: string;
   }) => {
     const settingStore = useSettingStore();
     const logLineNumber = settingStore.logLineNumberInteger;
@@ -82,7 +85,9 @@ export const useLogStore = defineStore("log", () => {
     const visibleOnReceived = document.visibilityState === "visible";
     const color =
       usersStore.visibleUsers[id]?.rgbaValue ?? Color.monaRGBToCSS({ r: 255, g: 255, b: 255 }, 1.0);
-    appendLog({ head, content, foot, visibleOnReceived, color, ihash });
+    //一意性を持たせるためuuidを使う
+    const uniqueId = uuidv4();
+    appendLog({ head, content, foot, visibleOnReceived, color, ihash, uniqueId });
     settingStore.saveCurrentLog(logs.value);
   };
 
@@ -116,7 +121,9 @@ export const useLogStore = defineStore("log", () => {
     const visibleOnReceived = document.visibilityState === "visible";
     const color =
       usersStore.visibleUsers[id]?.rgbaValue ?? Color.monaRGBToCSS({ r: 255, g: 255, b: 255 }, 1.0);
-    appendLog({ head, content, foot, visibleOnReceived, color, ihash });
+    //一意性を持たせるためuuidを使う
+    const uniqueId = uuidv4();
+    appendLog({ head, content, foot, visibleOnReceived, color, ihash, uniqueId });
     settingStore.saveCurrentLog(logs.value);
   };
 
