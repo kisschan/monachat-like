@@ -9,6 +9,11 @@
         light: !shouldBeDark,
       },
     ]"
+    draggable="true"
+    @dragstart.stop="dragStart($event)"
+    @dragend.stop="dragEnd($event)"
+    @dragover.prevent
+    @drop.prevent.stop
   >
     <div class="text-container">
       <SpanText :text="msg.cmt" :type="isDarkColor(color) ? 'white' : 'black'" class="text" />
@@ -43,12 +48,26 @@ const isThinkingBubble = computed(() => props.msg.style === 2);
 const isDarkColor = (color: string) => {
   return Color.isDarkColor(color);
 };
+
 const borderColor = computed(() => (shouldBeDark.value ? "white" : "black"));
+
+const dragStart = (e: DragEvent) => {
+  const dataTransfer = e.dataTransfer;
+  if (dataTransfer === null) return;
+  const target = e.target as HTMLElement;
+  target.classList.add("dragging");
+};
+
+const dragEnd = (e: DragEvent) => {
+  const target = e.target as HTMLElement;
+  target.classList.remove("dragging");
+};
 </script>
 
 <style lang="scss" scoped>
 .bubble {
   position: relative;
+  pointer-events: auto;
 
   display: flex;
   justify-content: center;
@@ -129,5 +148,9 @@ const borderColor = computed(() => (shouldBeDark.value ? "white" : "black"));
       height: 4px;
     }
   }
+}
+.dragging {
+  cursor: grab;
+  filter: opacity(0);
 }
 </style>
