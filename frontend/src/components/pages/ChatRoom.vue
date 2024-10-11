@@ -52,6 +52,8 @@
         :bubble-area-height="bubbleAreaHeight"
         :draggable="isMine(id as unknown as string)"
         @dragstart="dragStart"
+        @dragenf="dragEnd"
+        @pointerdown="pointerDown"
         @size-updated="sizeUpdated"
         @bubble-deleted="bubbleDeleted"
         @click="click"
@@ -149,6 +151,7 @@ const gripY = ref(0);
 const permittedSubmitting = ref(true); // チャットの送信が許可されているかどうか
 const keyCount = ref(0); // キータイプ数
 const typingStartTime = ref(0); // タイピング開始時刻
+const activePointerId = ref<number | null>(null);
 
 // ストア
 const { disconnected, myID } = storeToRefs(userStore);
@@ -221,6 +224,9 @@ const onKeyDown = (e: KeyboardEvent) => {
 onUnmounted(() => window.removeEventListener("keydown", onKeyDown));
 
 const drop = (e: DragEvent) => {
+  if (activePointerId.value === null) return;
+  const droppedPointerId = e.dataTransfer?.getData("text/plain");
+  if (droppedPointerId !== activePointerId.value.toString()) return;
   if (e.target === root.value) {
     // なにもないところにドロップしたとき
     userStore.setXY(e.offsetX - gripX.value, e.offsetY - gripY.value);
@@ -318,9 +324,21 @@ const onChangeStat = (e: Event) => {
   }
   userStore.setStat(e.target.value);
 };
+
+const pointerDown = (e: PointerEvent) => {
+  activePointerId.value = e.pointerId;
+};
+
 const dragStart = (e: DragEvent) => {
+  if (activePointerId.value !== null) {
+    e.dataTransfer?.setData("text/plain", activePointerId.value.toString());
+  }
   gripX.value = e.offsetX;
   gripY.value = e.offsetY - bubbleAreaHeight;
+};
+
+const dragEnd = () => {
+  activePointerId.value = null;
 };
 // キャラクターの画像が変化した時
 const sizeUpdated = (e: { id: string; width: number; height: number }) => {

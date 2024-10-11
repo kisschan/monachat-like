@@ -13,7 +13,7 @@
     @dragstart.stop="dragStart($event)"
     @dragend.stop="dragEnd($event)"
     @dragover.prevent
-    @drop.prevent
+    @drop.prevent.stop
   >
     <div class="text-container">
       <SpanText :text="msg.cmt" :type="isDarkColor(color) ? 'white' : 'black'" class="text" />
@@ -54,7 +54,6 @@ const borderColor = computed(() => (shouldBeDark.value ? "white" : "black"));
 const dragStart = (e: DragEvent) => {
   const dataTransfer = e.dataTransfer;
   if (dataTransfer === null) return;
-  dataTransfer.effectAllowed = "none";
   const target = e.target as HTMLElement;
   target.classList.add("dragging");
 };
