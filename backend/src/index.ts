@@ -29,7 +29,12 @@ const logger: Logger = Log4js.getLogger();
 logger.level = "debug";
 
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_HOST,
+    credentials: true,
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "/dist")));
 app.get("/api/rooms", (_: Request, res: Response) => {
