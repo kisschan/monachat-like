@@ -36,7 +36,7 @@
     {
       "id": "/7",
       "name": "キラキラ",
-      "img_url": "Xmas_Kirakira.jpg"
+      "img_url": "st7.svg"
     },
     {
       "id": "/8",
@@ -46,7 +46,7 @@
     {
       "id": "/9",
       "name": "食い逃げ",
-      "img_url": "Xmas_EatAndRun.jpg"
+      "img_url": "st9.svg"
     },
     {
       "id": "/10",
@@ -66,7 +66,7 @@
     {
       "id": "/13",
       "name": "東京精神病院",
-      "img_url": "Xmas_MentalHospital.jpg"
+      "img_url": "st13.svg"
     },
     {
       "id": "/14",
@@ -102,6 +102,21 @@
       "id": "/20",
       "name": "流石兄弟",
       "img_url": "sasuga.svg"
+    },
+    {
+      "id": "/21",
+      "name": "Xmasキラキラ",
+      "img_url": "Xmas_Kirakira.jpg"
+    },
+    {
+      "id": "/22",
+      "name": "Xmas食い逃げ",
+      "img_url": "Xmas_EatAndRun.jpg"
+    },
+    {
+      "id": "/23",
+      "name": "Xmas精神病院",
+      "img_url": "Xmas_MentalHospital.jpg"
     }
   ]
 }
