@@ -1,5 +1,12 @@
 <template>
-  <div ref="root" class="room" @drop.prevent="drop" @dragover.prevent @dragenter.prevent>
+  <div
+    ref="root"
+    class="room"
+    :class="{ yellow: currentRoom?.id === '/15' }"
+    @drop.prevent="drop"
+    @dragover.prevent
+    @dragenter.prevent
+  >
     <div class="top-right-text"><SpanText :size="15" :text="topRightText" /></div>
     <div class="top-log-buttons">
       <SimpleButton title="ログモード" class="log-button" :text-size="16" @click="clickLogMode" />
@@ -356,6 +363,10 @@ const bubbleDeleted = ({ characterID, messageID }: { characterID: string; messag
 @mixin supplementary-object {
   pointer-events: none;
   user-select: none;
+}
+
+.yellow {
+  background-color: #fef3c6;
 }
 
 .room {
