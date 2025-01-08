@@ -2,7 +2,7 @@
   <div
     ref="root"
     class="room"
-    :class="{ yellow: currentRoom?.id === '/15' }"
+    :class="{ yellow: currentRoom?.id === '/24' }"
     @drop.prevent="drop"
     @dragover.prevent
     @dragenter.prevent
