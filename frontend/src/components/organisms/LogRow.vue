@@ -56,5 +56,6 @@ const changeSelectedUsersColor = (ihash: string) => {
   overflow-wrap: break-word;
   overflow: hidden; // NOTE: 要素から想定外の方向にはみ出る文字を抑制する
   min-height: 24px;
+  word-break: break-all;
 }
 </style>
