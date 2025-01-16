@@ -18,14 +18,18 @@ export const useNoticeStore = defineStore("notice", () => {
     const settingStore = useSettingStore();
     if (settingStore.selectedVolume === "off") return;
     const music = new Audio("sound/mojachat5l1.mp3");
-    music.play();
+    music.play().catch(() => {
+      // TODO : 何らかの方法でユーザーのアクションがあるまでならないようにする
+    });
   };
 
   const playENTERAudio = () => {
     const settingStore = useSettingStore();
     if (settingStore.selectedVolume === "off") return;
     const music = new Audio("sound/mojachat5l0.mp3");
-    music.play();
+    music.play().catch(() => {
+      // TODO : 何らかの方法でユーザーのアクションがあるまでならないようにする
+    });
   };
 
   const reloadPage = () => {
