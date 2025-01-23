@@ -104,6 +104,7 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
     getRooms: vi.fn().mockReturnValue([{ c: 1, n: "/1" }]),
     countSameIhash: vi.fn().mockReturnValue(1),
     isPermittedToEnter: vi.fn().mockReturnValue(true),
+    getBannedIhashes: vi.fn().mockReturnValue(["BANIHASH"]),
     create: vi.fn().mockReturnValue(account),
     updateSocketIdWithValidToken: vi.fn(),
     updateAlive: vi.fn(),
@@ -135,6 +136,12 @@ const WhiteTripperMock = vi.fn().mockImplementation(() => {
     execute: vi.fn().mockReturnValue("hogeWhiteTrip"),
   };
 });
+const WhiteTripperMockBANUser = vi.fn().mockImplementation(() => {
+  return {
+    execute: vi.fn().mockReturnValue("BANIHASH"),
+  };
+});
+
 const BlackTripperMock = vi.fn().mockImplementation(() => {
   return {
     execute: vi.fn().mockReturnValue("hogeBlackTrip"),
@@ -338,6 +345,8 @@ describe("#receivedENTER", () => {
     expect(accountRep.getAccountByToken).toBeCalledTimes(1);
     expect(accountRep.isPermittedToEnter).toBeCalledTimes(1);
     expect(accountRep.isPermittedToEnter).toBeCalledWith("hogeWhiteTrip");
+    expect(accountRep.getBannedIhashes).toBeCalledTimes(1);
+    expect(accountRep.getBannedIhashes().includes("hogeWhiteTrip")).toBeFalsy();
     expect(client.moveRoom).toBeCalledTimes(1);
     expect(client.moveRoom).toBeCalledWith("/1", "/MONA8094");
     expect(client.sendUsers).toBeCalledTimes(1);
@@ -388,6 +397,8 @@ describe("#receivedENTER", () => {
     expect(accountRep.getAccountByToken).toBeCalledTimes(1);
     expect(accountRep.isPermittedToEnter).toBeCalledTimes(1);
     expect(accountRep.isPermittedToEnter).toBeCalledWith("hogeWhiteTrip");
+    expect(accountRep.getBannedIhashes).toBeCalledTimes(1);
+    expect(accountRep.getBannedIhashes().includes("hogeWhiteTrip")).toBeFalsy();
     expect(client.moveRoom).toBeCalledTimes(1);
     expect(client.moveRoom).toBeCalledWith("/1", "/1");
     expect(client.sendUsers).toBeCalledTimes(1);
@@ -412,6 +423,42 @@ describe("#receivedENTER", () => {
       },
       "/1"
     );
+  });
+
+  it("banuser enter at room selection", () => {
+    whiteTripper = new WhiteTripperMockBANUser();
+    presenter = new UserPresenter({
+      client: client,
+      server: server,
+      accountRep: accountRep,
+      systemLogger: systemLogger,
+      whiteTripper: whiteTripper,
+      blackTripper: blackTripper,
+    });
+    presenter.receivedENTER(
+      {
+        token: "token",
+        room: "/1",
+        x: 100,
+        y: 100,
+        scl: 100,
+        stat: "通常",
+        name: "名無しさん",
+        trip: "UWXYZ67890",
+        r: 70,
+        g: 55,
+        b: 60,
+        type: "mona",
+      },
+      clientInfo
+    );
+    expect(systemLogger.logReceivedENTER).toBeCalledTimes(1);
+    expect(accountRep.getAccountByToken).toBeCalledTimes(1);
+    expect(accountRep.isPermittedToEnter).toBeCalledTimes(1);
+    expect(accountRep.isPermittedToEnter).toBeCalledWith("BANIHASH");
+    expect(accountRep.getBannedIhashes).toBeCalledTimes(1);
+    expect(accountRep.getBannedIhashes().includes("BANIHASH")).toBeTruthy();
+    //BANなのでここから以下は呼ばれない
   });
 
   it("余分なプロパティ", () => {
@@ -481,6 +528,7 @@ describe("#receivedENTER", () => {
     expect(accountRep.fetchUsers).toBeCalledTimes(1);
     expect(accountRep.getAccountByToken).toBeCalledTimes(1);
     expect(accountRep.isPermittedToEnter).toBeCalledTimes(1);
+    expect(accountRep.getBannedIhashes).toBeCalledTimes(1);
     expect(client.moveRoom).toBeCalledTimes(1);
     expect(client.sendUsers).toBeCalledTimes(1);
     expect(server.sendENTER).toBeCalledTimes(1);
@@ -501,6 +549,7 @@ describe("#receivedENTER", () => {
     expect(accountRep.fetchUsers).toBeCalledTimes(1);
     expect(accountRep.getAccountByToken).toBeCalledTimes(1);
     expect(accountRep.isPermittedToEnter).toBeCalledTimes(1);
+    expect(accountRep.getBannedIhashes).toBeCalledTimes(1);
     expect(client.moveRoom).toBeCalledTimes(1);
     expect(client.sendUsers).toBeCalledTimes(1);
     expect(server.sendENTER).toBeCalledTimes(1);

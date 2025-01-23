@@ -61,6 +61,7 @@ export interface IAccountRepository {
   getRooms(): Room[];
   countSameIhash(ihash: string): number;
   isPermittedToEnter(ihash: string): boolean;
+  getBannedIhashes(): string[];
   // commands
   create(socketId: string, idGenerator?: IDGeneratable): Account;
   updateSocketIdWithValidToken(token: string, socketId: string): void;
