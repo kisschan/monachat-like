@@ -77,6 +77,11 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const account = this.authorize(req.token, clientInfo.socketId);
     const currentRoom = account.character.currentRoom;
     if (currentRoom == null) return;
+    const pargedRegex =
+      /(VR|[Ｖｖ][Ｒｒ]|[ぶブﾌﾞ][いイｲ][あアｱ]?[ーあアｱ][るルﾙ])/gi;
+    if (pargedRegex.test(req.cmt)) {
+      req.cmt = req.cmt.replace(pargedRegex, "■■");
+    }
     const speech = new Speech(req.cmt);
     if (!this.accountRep.speak(account.id, new Date())) {
       this.clientCommunicator.disconnect();
