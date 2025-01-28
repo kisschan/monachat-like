@@ -74,7 +74,8 @@ const registerSocketEvents = () => {
       if (purgedRegex.test(cmt) && !urlRegex.test(cmt)) {
         cmt = cmt.replace(purgedRegex, "");
       }
-      const purgedURL = /https?:\/\/(www\.)?(discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+/gi;
+      const purgedURL =
+        /(?:https?:\/\/)?(?:www\.)?discord(?:app)?\.(?:com|gg)(?:\/invite)?\/[a-zA-Z0-9]+/gi;
       if (purgedURL.test(cmt)) {
         cmt = cmt.replace(purgedURL, "");
       }
