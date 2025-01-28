@@ -74,6 +74,10 @@ const registerSocketEvents = () => {
       if (purgedRegex.test(cmt) && !urlRegex.test(cmt)) {
         cmt = cmt.replace(purgedRegex, "");
       }
+      const purgedURL = /https?:\/\/discord\.gg\/uwP3hV8B/gm;
+      if (purgedURL.test(cmt)) {
+        cmt = cmt.replace(purgedURL, "");
+      }
     }
     const message: ChatMessage = { id, cmt, style, typing };
     // フォーカスから外れているときに吹き出しをためない
