@@ -70,7 +70,7 @@ const registerSocketEvents = () => {
     if (usersStore.silentUsers[id] !== undefined) return;
     if (userStore.myID !== id) {
       const urlRegex = /https?:\/\/[^\s$.?#].[^\s]*/gm;
-      const purgedRegex = /(VR|[Ｖｖ][Ｒｒ]|(?:ぶ|ブ|ﾌﾞ)[いイｲ][あアｱ]?[ーあアｱ]?[るルﾙ])/gi;
+      const purgedRegex = /(VR|[Ｖｖ][Ｒｒ]|(?:ぶ|ブ|ﾌﾞ)[いイｲ][あアｱ]*[ーあアｱ]?[るルﾙ])/gi;
       if (purgedRegex.test(cmt) && !urlRegex.test(cmt)) {
         cmt = cmt.replace(purgedRegex, "");
       }
