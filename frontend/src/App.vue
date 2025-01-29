@@ -68,6 +68,13 @@ const registerSocketEvents = () => {
     usersStore.updateUserExistence(id, true); // TODO: この操作の必要性を検証する必要あり
     if (usersStore.visibleUsers[id] === undefined) return;
     if (usersStore.silentUsers[id] !== undefined) return;
+    if (userStore.myID !== id) {
+      const urlRegex = /https?:\/\/[^\s$.?#].[^\s]*/gm;
+      const purgedRegex = /(VR|[Ｖｖ][Ｒｒ]|(?:ぶ|ブ|ﾌﾞ)[いイｲ][あアｱ]*[ーあアｱ]?[るルﾙ])/gi;
+      if (purgedRegex.test(cmt) && !urlRegex.test(cmt)) {
+        cmt = cmt.replace(purgedRegex, "");
+      }
+    }
     const message: ChatMessage = { id, cmt, style, typing };
     // フォーカスから外れているときに吹き出しをためない
     if (document.visibilityState === "visible" && !uiStore.isLogVisible) {
