@@ -50,10 +50,15 @@ export class Account {
 
   speak(now: Date): boolean {
     const commentIntervalMilliSec = 800;
+
     if (
       now.getTime() - this.lastCommentTime.getTime() <
       commentIntervalMilliSec
     ) {
+      console.log(
+        "コメント間のmillSec:",
+        now.getTime() - this.lastCommentTime.getTime()
+      );
       return false;
     }
     this.updateLastCommentTime(now);
