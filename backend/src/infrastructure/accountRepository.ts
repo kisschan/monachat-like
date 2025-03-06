@@ -141,6 +141,14 @@ export class AccountRepository implements IAccountRepository {
     account?.updateLastCommentTime(now);
   }
 
+  getRemainingDelay(id: string, now: Date): number {
+    const account = this.getAccountByID(id);
+    if (account) {
+      return account.getRemainingDelay(now);
+    }
+    return 0;
+  }
+
   // キャラクター情報の更新
   updateCharacter(id: string, character: Character): void {
     const account = this.getAccountByID(id);

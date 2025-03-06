@@ -303,17 +303,30 @@ describe("#receivedCOM", () => {
     expect(server.sendCOM).toBeCalledTimes(0);
   });
 
-  it("should disconnect if interval of comment is too short", () => {
-    accountRep.speak = vi.fn().mockReturnValue(false);
+  it("should delay COM sending if comment interval is too short", async () => {
+    // タイマーをモック
+    vi.useFakeTimers();
+
+    // 初回の speak 呼び出しでは false を返し、その後の呼び出しで true を返すようにスタブ
+    accountRep.speak = vi
+      .fn()
+      .mockReturnValueOnce(false) // 初回は送信不可
+      .mockReturnValueOnce(true); // 遅延後は送信可能
+
     const account = Account.instantiate({
       idGenerator: new IDGeneratorMock(),
       socketId: "socketId",
     });
     account.character = account.character.moveRoom("/1");
-    const milliSecNow = new Date().getTime();
-    const tooShortPreviousTime = new Date(milliSecNow - 500);
-    account.lastCommentTime = tooShortPreviousTime;
+    const now = new Date();
+    const milliSecNow = now.getTime();
+    // 前回コメント時刻が現在から500ms前なので、まだ800ms未満
+    account.lastCommentTime = new Date(milliSecNow - 500);
+
     accountRep.getAccountByToken = vi.fn().mockReturnValue(account);
+    accountRep.getRemainingDelay = vi.fn().mockReturnValue(300);
+
+    // 受信処理を呼び出す
     presenter.receivedCOM(
       {
         token: "token",
@@ -321,11 +334,25 @@ describe("#receivedCOM", () => {
       },
       clientInfo
     );
+
+    // すぐには COM 送信が行われない（遅延中のため）
     expect(systemLogger.logReceivedCOM).toBeCalledTimes(1);
     expect(accountRep.create).toBeCalledTimes(0);
-    expect(client.disconnect).toBeCalledTimes(1);
+    expect(client.disconnect).toBeCalledTimes(0);
     expect(client.sendAuth).toBeCalledTimes(0);
     expect(server.sendCOM).toBeCalledTimes(0);
+
+    // 残り待機時間は 800ms - 500ms = 300ms のはずなので、300ms 進める
+    vi.advanceTimersByTime(300);
+
+    // タイマー処理を全て実行
+    await vi.runAllTimersAsync();
+
+    // 遅延後、sendCOM が呼ばれるはず
+    expect(server.sendCOM).toBeCalledTimes(1);
+
+    // クリーンアップ：リアルタイマーに戻す
+    vi.useRealTimers();
   });
 });
 

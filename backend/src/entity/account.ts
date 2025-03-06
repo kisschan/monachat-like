@@ -55,10 +55,6 @@ export class Account {
       now.getTime() - this.lastCommentTime.getTime() <
       commentIntervalMilliSec
     ) {
-      console.log(
-        "コメント間のmillSec:",
-        now.getTime() - this.lastCommentTime.getTime()
-      );
       return false;
     }
     this.updateLastCommentTime(now);
@@ -71,5 +67,11 @@ export class Account {
 
   updateLastCommentTime(lastCommentTime: Date) {
     this.lastCommentTime = lastCommentTime;
+  }
+
+  getRemainingDelay(now: Date): number {
+    const commentIntervalMilliSec = 800;
+    const elapsed = now.getTime() - this.lastCommentTime.getTime();
+    return Math.max(0, commentIntervalMilliSec - elapsed);
   }
 }

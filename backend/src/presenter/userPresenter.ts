@@ -76,19 +76,40 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedCOM(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
     const currentRoom = account.character.currentRoom;
-    if (currentRoom == null) return;
+    if (!currentRoom) return;
+
     const speech = new Speech(req.cmt);
-    if (!this.accountRep.speak(account.id, new Date())) {
-      this.clientCommunicator.disconnect();
+    const now = new Date();
+
+    // 送信処理を共通化するローカル関数
+    const sendResponse = () => {
+      const res: COMResponse = {
+        id: account.id,
+        cmt: speech.value,
+        ...(req.style && { style: req.style }),
+        ...(req.typing && { typing: { ...req.typing } }),
+      };
+      this.serverCommunicator.sendCOM(res, currentRoom);
+    };
+
+    // 送信可能かチェック
+    if (!this.accountRep.speak(account.id, now)) {
+      // 待機時間を取得し、遅延後に再チェック＆送信
+      const delay = this.accountRep.getRemainingDelay(account.id, now);
+      // 次の送信予定時刻を計算
+      const scheduledTime = new Date(now.getTime() + delay);
+      // 予定送信時刻で即座に更新する
+      account.updateLastCommentTime(scheduledTime);
+      setTimeout(() => {
+        if (this.accountRep.speak(account.id, new Date())) {
+          sendResponse();
+        }
+      }, delay);
       return;
     }
-    let res: COMResponse = {
-      id: account.id,
-      cmt: speech.value,
-    };
-    req.style != null && (res.style = req.style);
-    req.typing != null && (res.typing = { ...req.typing });
-    this.serverCommunicator.sendCOM(res, currentRoom);
+
+    // 即時送信
+    sendResponse();
   }
 
   receivedENTER(req: ENTERRequest, clientInfo: ClientInfo): void {
