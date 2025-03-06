@@ -354,6 +354,67 @@ describe("#receivedCOM", () => {
     // クリーンアップ：リアルタイマーに戻す
     vi.useRealTimers();
   });
+
+  it("should not send second COM before 800ms interval", async () => {
+    vi.useFakeTimers();
+
+    accountRep.speak = vi
+      .fn()
+      .mockReturnValueOnce(false) // 1つ目COM: 初回チェック
+      .mockReturnValueOnce(true) // 1つ目COM: 遅延後チェック
+      .mockReturnValueOnce(false) // 2つ目COM: 初回チェック
+      .mockReturnValueOnce(true); // 2つ目COM: 遅延後チェック
+
+    const account = Account.instantiate({
+      idGenerator: new IDGeneratorMock(),
+      socketId: "socketId",
+    });
+    account.character = account.character.moveRoom("/1");
+    const now = new Date();
+    const milliSecNow = now.getTime();
+    account.lastCommentTime = new Date(milliSecNow - 500);
+
+    accountRep.getAccountByToken = vi.fn().mockReturnValue(account);
+    accountRep.getRemainingDelay = vi
+      .fn()
+      .mockReturnValueOnce(300) // 1つ目COM用: 800-500=300ms
+      .mockReturnValueOnce(800); // 2つ目COM用
+
+    // 1つ目のCOMを受信
+    presenter.receivedCOM(
+      {
+        token: "token",
+        cmt: "Hello 1",
+      },
+      clientInfo
+    );
+
+    // すぐには送信されないはず
+    expect(server.sendCOM).toBeCalledTimes(0);
+
+    // 300ms進めると1つ目のCOMが送信される
+    vi.advanceTimersByTime(300);
+    expect(server.sendCOM).toBeCalledTimes(1);
+
+    // 1つ目COM送信後、2つ目のCOMをすぐに受信
+    presenter.receivedCOM(
+      {
+        token: "token",
+        cmt: "Hello 2",
+      },
+      clientInfo
+    );
+
+    // 500ms進めるだけでは2つ目はまだ送信されないはず
+    vi.advanceTimersByTime(500);
+    expect(server.sendCOM).toBeCalledTimes(1); // 2つ目は未実行
+
+    // さらに300ms進めると、合計800ms経過し2つ目が送信される
+    vi.advanceTimersByTime(300);
+    expect(server.sendCOM).toBeCalledTimes(2);
+
+    vi.useRealTimers();
+  });
 });
 
 describe("#receivedENTER", () => {
