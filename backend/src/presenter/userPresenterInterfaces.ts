@@ -68,6 +68,7 @@ export interface IAccountRepository {
   updateAlive(id: string, alive: boolean): void;
   updateIsMobile(id: string, isMobile: boolean): void;
   updateLastCommentTime(id: string, now: Date): void;
+  getRemainingDelay(id: string, now: Date): number;
   updateCharacter(id: string, character: Character): void;
   speak(id: string, now: Date): boolean;
 }
