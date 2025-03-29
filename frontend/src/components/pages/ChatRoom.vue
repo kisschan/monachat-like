@@ -286,7 +286,11 @@ const clickLogLines = () => {
   }
 };
 const click = ({ ihash }: { ihash: string }) => {
-  settingStore.toggleUserSelecting(ihash);
+  if (settingStore.isClickToChangeColorEnabled) {
+    settingStore.clickToChangeColor(ihash);
+  } else {
+    settingStore.toggleUserSelecting(ihash);
+  }
 };
 const clickRight = ({ ihash }: { ihash: string }) => {
   if (settingStore.selectedUsersIhashes[ihash]) {

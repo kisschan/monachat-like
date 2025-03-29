@@ -12,6 +12,13 @@
             />
           </div>
           <div class="field-wrapper">
+            <SwitchField
+              v-model="isClickToChangeColorEnabled"
+              label="クリックのみでユーザーのログの色を切り替える"
+              label-id="userColorEnabled"
+            />
+          </div>
+          <div class="field-wrapper">
             <SwitchField v-model="isKBMode" label="KBテーマ" label-id="KBMode" />
           </div>
           <div class="field-wrapper">
@@ -107,6 +114,10 @@ const isDescendingLog = computed({
 const isDrawnUnderlineLog = computed({
   get: () => settingStore.isDrawnUnderlineLog,
   set: (value) => settingStore.updateIsDrawnUnderlineLog(value),
+});
+const isClickToChangeColorEnabled = computed({
+  get: () => settingStore.isClickToChangeColorEnabled,
+  set: (value) => settingStore.updateIsClickToChangeColorEnabled(value),
 });
 const logLineNumber = computed({
   get: () => {

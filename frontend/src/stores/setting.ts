@@ -21,6 +21,7 @@ type StorageKey =
   | "scrollableLog"
   | "descendingLog"
   | "drawBorderBottomLog"
+  | "userColorEnabled"
   | "logInfinite"
   | "logLineNumber"
   | "selectedUsersIhashes"
@@ -118,6 +119,9 @@ export const useSettingStore = defineStore("setting", () => {
   const isDrawnUnderlineLog = ref(getBooleanValueWithDefault("drawBorderBottomLog", false));
   const updateIsDrawnUnderlineLog = (value: boolean) =>
     updateBooleanValueWithPerpetuation(isDrawnUnderlineLog, "drawBorderBottomLog", value);
+  const isClickToChangeColorEnabled = ref(getBooleanValueWithDefault("userColorEnabled", false));
+  const updateIsClickToChangeColorEnabled = (value: boolean) =>
+    updateBooleanValueWithPerpetuation(isClickToChangeColorEnabled, "userColorEnabled", value);
   // TODO: logLineNumberへの移行が完了したら削除
   const isInfiniteLog = ref(getBooleanValueWithDefault("logInfinite", false)); // ログを無限に保存するか
   const logLineNumber = ref(getValueWithDefault("logLineNumber", ""));
@@ -147,6 +151,8 @@ export const useSettingStore = defineStore("setting", () => {
     updateIsDescendingLog,
     isDrawnUnderlineLog,
     updateIsDrawnUnderlineLog,
+    isClickToChangeColorEnabled,
+    updateIsClickToChangeColorEnabled,
     isInfiniteLog,
     logLineNumber,
     logLineNumberInteger,
@@ -168,6 +174,17 @@ export const useSettingStore = defineStore("setting", () => {
     );
     const nextIndex = (indexOfSelectedColor + 1) % SelectedUserColors.length;
     selectedUsersIhashes.value[ihash] = SelectedUserColors[nextIndex] ?? "red";
+  };
+  const clickToChangeColor = (ihash: string) => {
+    if (selectedUsersIhashes.value[ihash] === "orange") {
+      delete selectedUsersIhashes.value[ihash];
+      return;
+    }
+    if (selectedUsersIhashes.value[ihash]) {
+      changeSelectedUserColor(ihash);
+    } else {
+      selectedUsersIhashes.value[ihash] = "red";
+    }
   };
   const log = ref(getValueSessionStorageWithDefault("log", "[]"));
   const saveCurrentLog = (
@@ -202,6 +219,7 @@ export const useSettingStore = defineStore("setting", () => {
     selectedUsersIhashes,
     toggleUserSelecting,
     changeSelectedUserColor,
+    clickToChangeColor,
     log,
     saveCurrentLog,
     loadedLogFromStorage,

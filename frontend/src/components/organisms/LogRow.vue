@@ -11,7 +11,9 @@
       :text="msg.head"
       :type="selectedUsersIhashes[msg.ihash]"
       @click.right.prevent="changeSelectedUsersColor(msg.ihash)"
-      @click="toggleUserSelecting(msg.ihash)"
+      @click="
+        isClickToChangeColorEnabled ? clickToChangeColor(msg.ihash) : toggleUserSelecting(msg.ihash)
+      "
     />
     <LinkableText :text="msg.content" :type="selectedUsersIhashes[msg.ihash]" />
     <SpanText :text="msg.foot" :type="selectedUsersIhashes[msg.ihash]" />
@@ -40,7 +42,8 @@ const uiStore = useUIStore();
 const settingStore = useSettingStore();
 
 const { greyBackgroundColor } = storeToRefs(uiStore);
-const { isDrawnUnderlineLog, selectedUsersIhashes } = storeToRefs(settingStore);
+const { isDrawnUnderlineLog, selectedUsersIhashes, isClickToChangeColorEnabled } =
+  storeToRefs(settingStore);
 
 // TODO: イベントにして上位コンポーネントに渡すようにする。
 const toggleUserSelecting = (ihash: string) => {
@@ -48,6 +51,10 @@ const toggleUserSelecting = (ihash: string) => {
 };
 const changeSelectedUsersColor = (ihash: string) => {
   settingStore.changeSelectedUserColor(ihash);
+};
+const clickToChangeColor = (ihash: string) => {
+  console.log(isClickToChangeColorEnabled);
+  settingStore.clickToChangeColor(ihash);
 };
 </script>
 
