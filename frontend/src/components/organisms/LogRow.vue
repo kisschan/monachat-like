@@ -53,7 +53,6 @@ const changeSelectedUsersColor = (ihash: string) => {
   settingStore.changeSelectedUserColor(ihash);
 };
 const clickToChangeColor = (ihash: string) => {
-  console.log(isClickToChangeColorEnabled);
   settingStore.clickToChangeColor(ihash);
 };
 </script>
