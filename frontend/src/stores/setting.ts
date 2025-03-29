@@ -29,7 +29,7 @@ type StorageKey =
 const TRUE = "true";
 const FALSE = "false";
 
-export const SelectedUserColors = ["red", "blue", "green", "purple", "orange"] as const;
+export const SelectedUserColors = ["red", "blue", "green", "purple", "orange", "pink"] as const;
 export type SelectedUserColorType = (typeof SelectedUserColors)[number];
 export type TimeOptionsType = "quick" | "short" | "medium" | "long";
 
@@ -176,7 +176,7 @@ export const useSettingStore = defineStore("setting", () => {
     selectedUsersIhashes.value[ihash] = SelectedUserColors[nextIndex] ?? "red";
   };
   const clickToChangeColor = (ihash: string) => {
-    if (selectedUsersIhashes.value[ihash] === "orange") {
+    if (selectedUsersIhashes.value[ihash] === "pink") {
       delete selectedUsersIhashes.value[ihash];
       return;
     }

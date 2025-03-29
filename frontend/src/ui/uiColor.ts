@@ -8,6 +8,7 @@ export type ColorType =
   | "green"
   | "purple"
   | "orange"
+  | "pink"
   | "link";
 
 export class UIColor {
@@ -33,6 +34,8 @@ export class UIColor {
         return isDark ? "violet" : "purple";
       case "orange":
         return isDark ? "wheat" : "orange";
+      case "pink":
+        return isDark ? "pink" : "hotpink";
       case "link":
         return isDark ? "cyan" : "blue";
     }
