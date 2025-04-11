@@ -17,6 +17,12 @@
             :text="nameSlotProps.data.disp"
             :size="16"
             :type="selectedUsersIhashes[nameSlotProps.data.ihash]"
+            @click.right.prevent="changeSelectedUsersColor(nameSlotProps.data.ihash)"
+            @click="
+              isClickToChangeColorEnabled
+                ? clickToChangeColor(nameSlotProps.data.ihash)
+                : toggleUserSelecting(nameSlotProps.data.ihash)
+            "
           />
         </template>
       </Column>
@@ -72,13 +78,22 @@ const uiStore = useUIStore();
 const settingStore = useSettingStore();
 
 const { panelBackgroundColor } = storeToRefs(uiStore);
-const { selectedUsersIhashes } = storeToRefs(settingStore);
+const { selectedUsersIhashes, isClickToChangeColorEnabled } = storeToRefs(settingStore);
 
 const onClickIgnore = (ihash: string) => {
   userStore.toggleIgnorance(ihash);
 };
 const onChangeSilentIgnore = (ihash: string, isActive: boolean) => {
   userStore.toggleSilentIgnorance(ihash, isActive);
+};
+const toggleUserSelecting = (ihash: string) => {
+  settingStore.toggleUserSelecting(ihash);
+};
+const changeSelectedUsersColor = (ihash: string) => {
+  settingStore.changeSelectedUserColor(ihash);
+};
+const clickToChangeColor = (ihash: string) => {
+  settingStore.clickToChangeColor(ihash);
 };
 
 const userDisp = (user: { name: string; trip: string; ihash: string }, id: string) => {
