@@ -102,26 +102,6 @@
       "id": "/20",
       "name": "流石兄弟",
       "img_url": "sasuga.svg"
-    },
-    {
-      "id": "/21",
-      "name": "Xmasキラキラ",
-      "img_url": "Xmas_Kirakira.jpg"
-    },
-    {
-      "id": "/22",
-      "name": "Xmas食い逃げ",
-      "img_url": "Xmas_EatAndRun.jpg"
-    },
-    {
-      "id": "/23",
-      "name": "Xmas精神病院",
-      "img_url": "Xmas_MentalHospital.jpg"
-    },
-    {
-      "id": "/24",
-      "name": "迎春",
-      "img_url": "newYear.jpg"
     }
   ]
 }
