@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, Ref, ref } from "vue";
+import { computed, Ref, ref, watch } from "vue";
 
 export interface ISetting {
   isDarkMode: boolean;
@@ -53,6 +53,7 @@ const updateValueWithPerpetuation = (ref: Ref<string>, key: StorageKey, value: s
 };
 const getValueSessionStorageWithDefault = (key: StorageKey, defaultValue: string) =>
   sessionStorage.getItem(`${storageKeyPrefix}/${key}`) ?? defaultValue;
+
 const updateValueSessionStorageWithPerpetuation = (
   ref: Ref<string>,
   key: StorageKey,
@@ -160,7 +161,30 @@ export const useSettingStore = defineStore("setting", () => {
   };
 
   // ユーザー設定情報
-  const selectedUsersIhashes = ref<{ [key in string]: SelectedUserColorType }>({});
+
+  const selectedUsersIhashesRaw = ref(
+    getValueSessionStorageWithDefault("selectedUsersIhashes", "{}"),
+  );
+
+  const loadSelectedUsersIhashesRaw = (defaultRaw: object = {}) => {
+    let raw: { [key in string]: SelectedUserColorType };
+    try {
+      raw = JSON.parse(selectedUsersIhashesRaw.value);
+      return raw;
+    } catch {
+      sessionStorage.removeItem(storageKeyPrefix + "/selectedUsersIhashes");
+      return defaultRaw;
+    }
+  };
+
+  const savedselectedUsersIhashes = computed(() => {
+    return loadSelectedUsersIhashesRaw() as { [key in string]: SelectedUserColorType };
+  });
+
+  const selectedUsersIhashes = ref<{ [key in string]: SelectedUserColorType }>(
+    savedselectedUsersIhashes.value,
+  );
+
   const toggleUserSelecting = (ihash: string) => {
     if (selectedUsersIhashes.value[ihash]) {
       delete selectedUsersIhashes.value[ihash];
@@ -168,6 +192,7 @@ export const useSettingStore = defineStore("setting", () => {
       selectedUsersIhashes.value[ihash] = "red";
     }
   };
+
   const changeSelectedUserColor = (ihash: string) => {
     const indexOfSelectedColor = SelectedUserColors.indexOf(
       selectedUsersIhashes.value[ihash] ?? "red",
@@ -175,6 +200,7 @@ export const useSettingStore = defineStore("setting", () => {
     const nextIndex = (indexOfSelectedColor + 1) % SelectedUserColors.length;
     selectedUsersIhashes.value[ihash] = SelectedUserColors[nextIndex] ?? "red";
   };
+
   const clickToChangeColor = (ihash: string) => {
     if (selectedUsersIhashes.value[ihash] === "pink") {
       delete selectedUsersIhashes.value[ihash];
@@ -186,6 +212,26 @@ export const useSettingStore = defineStore("setting", () => {
       selectedUsersIhashes.value[ihash] = "red";
     }
   };
+
+  const saveCurrentSelectedUsersIhashesObj = (value: {
+    [key in string]: SelectedUserColorType;
+  }) => {
+    const selectedUsersIhashesRawData = JSON.stringify(value);
+    updateValueSessionStorageWithPerpetuation(
+      selectedUsersIhashesRaw,
+      "selectedUsersIhashes",
+      selectedUsersIhashesRawData,
+    );
+  };
+
+  watch(
+    selectedUsersIhashes,
+    (newVal: { [key in string]: SelectedUserColorType }) => {
+      saveCurrentSelectedUsersIhashesObj(newVal);
+    },
+    { deep: true },
+  );
+
   const log = ref(getValueSessionStorageWithDefault("log", "[]"));
   const saveCurrentLog = (
     value: {
