@@ -214,12 +214,25 @@ export const useUserStore = defineStore("user", () => {
       return;
     }
     const newScl = user.scl === 100 ? -100 : 100;
+
+    //INFO:domainの方をいじるべきか？
+
+    const censorSuicideAndInsults = (text: string): string => {
+      // 1. 互換正規化(NFKC) & NFC：半角カナ→全角カナ、合成文字→単一文字に統一
+      const normalized = text.normalize("NFKC").normalize("NFC");
+      const pattern =
+        /(?:自|[じジ])(?:殺|[さサ][つツ])|(?:不|[ぶブ])(?:細|[さサ][いイ])(?:工|[くク])/gu;
+
+      // 3. 一括置換
+      return normalized.replace(pattern, "ちゅ");
+    };
+
     socketIOInstance.emit("SET", {
       token: myToken.value,
       x: user.x,
       y: user.y,
       scl: newScl,
-      stat: user.stat,
+      stat: censorSuicideAndInsults(user.stat), //user.stat,
     });
   };
 
