@@ -166,19 +166,23 @@ export const useSettingStore = defineStore("setting", () => {
     getValueSessionStorageWithDefault("selectedUsersIhashes", "{}"),
   );
 
-  const loadSelectedUsersIhashesRaw = (defaultRaw: string = "{}") => {
-    const raw = getValueSessionStorageWithDefault("selectedUsersIhashes", "{}") ?? defaultRaw;
+  const loadSelectedUsersIhashesRaw = (defaultRaw: object = {}) => {
+    let raw: { [key in string]: SelectedUserColorType };
     try {
-      JSON.parse(raw);
+      raw = JSON.parse(selectedUsersIhashesRaw.value);
       return raw;
     } catch {
-      sessionStorage.removeItem(`${storageKeyPrefix}/selectedUsersIhashes`);
+      sessionStorage.removeItem(storageKeyPrefix + "/selectedUsersIhashes");
       return defaultRaw;
     }
   };
 
-  const selectedUsersIhashes = ref<Record<string, SelectedUserColorType>>(
-    JSON.parse(loadSelectedUsersIhashesRaw()),
+  const savedselectedUsersIhashes = computed(() => {
+    return loadSelectedUsersIhashesRaw() as { [key in string]: SelectedUserColorType };
+  });
+
+  const selectedUsersIhashes = ref<{ [key in string]: SelectedUserColorType }>(
+    savedselectedUsersIhashes.value,
   );
 
   const toggleUserSelecting = (ihash: string) => {
