@@ -200,7 +200,7 @@ export const useUserStore = defineStore("user", () => {
       x: user.x,
       y: user.y,
       scl: user.scl,
-      stat: censorSuicideAndInsults(stat), //stat
+      stat: stat, //stat
     });
   };
 
