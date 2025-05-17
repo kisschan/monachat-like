@@ -116,7 +116,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedENTER(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
     const ip = new IP(clientInfo.ipAddress);
-    const ihash = { value: req.name ?? "nanasi" }; //new WhiteTrip(ip, this.whiteTripper);
+    const ihash = new WhiteTrip(ip, this.whiteTripper);
     if (
       !this.accountRep.isPermittedToEnter(ihash.value) ||
       this.accountRep.getBannedIhashes().includes(ihash.value)
