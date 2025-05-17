@@ -116,7 +116,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedENTER(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
     const ip = new IP(clientInfo.ipAddress);
-    const ihash = new WhiteTrip(ip, this.whiteTripper);
+    const ihash = { value: req.name ?? "nanasi" }; //new WhiteTrip(ip, this.whiteTripper);
     if (
       !this.accountRep.isPermittedToEnter(ihash.value) ||
       this.accountRep.getBannedIhashes().includes(ihash.value)
@@ -202,18 +202,31 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
         Direction.instantiateByScl(req.scl)
       );
     }
-    if (req.stat != null) {
-      updatedCharacter = updatedCharacter.updateStatus(new Status(req.stat));
-    }
-    this.accountRep.updateCharacter(account.id, updatedCharacter);
     const currentAccount = this.accountRep.getAccountByToken(req.token);
     if (currentAccount == null) return;
+
+    if (req.stat != null) {
+      if (
+        currentAccount.character.avatar.whiteTrip?.value &&
+        this.accountRep
+          .getStatBannedIhashes()
+          .includes(currentAccount.character.avatar.whiteTrip?.value)
+      ) {
+        const statBannedMessage = "状態BAN";
+        updatedCharacter = updatedCharacter.updateStatus(
+          new Status(statBannedMessage)
+        );
+      } else {
+        updatedCharacter = updatedCharacter.updateStatus(new Status(req.stat));
+      }
+    }
+    this.accountRep.updateCharacter(account.id, updatedCharacter);
     const res: SETResponse = {
       id: currentAccount.id,
-      x: currentAccount.character.position.x,
-      y: currentAccount.character.position.y,
-      scl: currentAccount.character.direction.getScl(),
-      stat: currentAccount.character.status.value,
+      x: updatedCharacter.position.x,
+      y: updatedCharacter.position.y,
+      scl: updatedCharacter.direction.getScl(),
+      stat: updatedCharacter.status.value,
     };
     this.serverCommunicator.sendSET(res, currentRoom);
   }
