@@ -163,7 +163,7 @@ describe("AccountRepository", () => {
     });
 
     it("should return BAN_USER_IHASHS to array if env file read and only colon", () => {
-      process.env.STAT_BAN_IHASHS = ":";
+      process.env.BAN_USER_IHASHS = ":";
       const banUserIhash = accountRepsitory.getBannedIhashes();
       expect(banUserIhash).toStrictEqual(["", ""]);
     });
