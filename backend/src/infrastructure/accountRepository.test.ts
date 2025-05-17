@@ -175,6 +175,26 @@ describe("AccountRepository", () => {
     });
   });
 
+  describe("#getStatBannedUsers", () => {
+    it("should return empty string if  is unset", () => {
+      process.env.STAT_BAN_IHASHS = "";
+      const statBanUserIhash = accountRepsitory.getStatBannedIhashes();
+      expect(statBanUserIhash).toStrictEqual([]);
+    });
+
+    it("should return BAN_USER_IHASHS to array if env file read and contains only one", () => {
+      process.env.STAT_BAN_IHASHS = "KISUKEXXXX";
+      const statBanUserIhash = accountRepsitory.getStatBannedIhashes();
+      expect(statBanUserIhash).toStrictEqual(["KISUKEXXXX"]);
+    });
+
+    it("should return BAN_USER_IHASHS to array if env file read", () => {
+      process.env.BAN_USER_IHASHS = "KISUKEXXXX:NONTIXXXXX";
+      const statBanUserIhash = accountRepsitory.getBannedIhashes();
+      expect(statBanUserIhash).toStrictEqual(["KISUKEXXXX", "NONTIXXXXX"]);
+    });
+  });
+
   describe("#create", () => {
     it("should make object", () => {
       const account = accountRepsitory.create("socketId");

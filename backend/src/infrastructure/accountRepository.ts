@@ -43,6 +43,13 @@ export class AccountRepository implements IAccountRepository {
     return process.env.BAN_USER_IHASHS.split(":");
   }
 
+  getStatBannedIhashes() {
+    if (!process.env.STAT_BAN_IHASHS) {
+      return [];
+    }
+    return process.env.STAT_BAN_IHASHS.split(":");
+  }
+
   // 指定した部屋にいるユーザーをすべて取得する
   fetchUsers(room: string): USER[] {
     const accounts = this.accounts.filter(

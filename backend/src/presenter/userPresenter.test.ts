@@ -105,6 +105,7 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
     countSameIhash: vi.fn().mockReturnValue(1),
     isPermittedToEnter: vi.fn().mockReturnValue(true),
     getBannedIhashes: vi.fn().mockReturnValue(["BANIHASH"]),
+    getStatBannedIhashes: vi.fn().mockReturnValue(["BANIHASH"]),
     create: vi.fn().mockReturnValue(account),
     updateSocketIdWithValidToken: vi.fn(),
     updateAlive: vi.fn(),
@@ -747,6 +748,56 @@ describe("#receivedSET", () => {
         scl: 100,
         stat: "通常",
       },
+      "/1"
+    );
+  });
+
+  it("状態BANされたUSER", () => {
+    // (1) BAN用の Avatar を準備
+    const banAvatar = new Avatar({
+      name: new Name("田中太郎"),
+      charType: new CharType("unknown2"),
+      charColor: Color.instantiateByMona({ r: 50, g: 50, b: 50 }),
+      blackTrip: undefined,
+      whiteTrip: new WhiteTrip(new IP("0.0.0.0"), {
+        execute: () => "BANIHASH",
+        get value() {
+          return "BANIHASH";
+        },
+      } as Tripper),
+    });
+
+    // アカウントを生成して avatar を更新
+    const account = Account.instantiate({
+      idGenerator: new IDGeneratorMock(),
+      socketId: "socketId",
+    });
+
+    account.character = new Character()
+      .updateAvatar(banAvatar)
+      .movePosition(Position.instantiate({ x: 50, y: 50 })!)
+      .turn(Direction.instantiate(DirectionValue.Right))
+      .updateStatus(new Status("通常"))
+      .moveRoom("/1");
+
+    // authorize/getAccountByToken が同じ account を返すようモック
+    accountRep.getAccountBySocketId = vi.fn().mockReturnValue(account);
+    accountRep.getAccountByToken = vi.fn().mockReturnValue(account);
+
+    presenter.receivedSET(
+      { token: "token", x: 50, y: 50, scl: 100, stat: "通常" },
+      clientInfo
+    );
+
+    expect(accountRep.getStatBannedIhashes).toBeCalledTimes(1);
+    expect(accountRep.updateCharacter).toBeCalledWith(
+      account.id,
+      expect.objectContaining({
+        status: expect.objectContaining({ value: "状態BAN" }),
+      })
+    );
+    expect(server.sendSET).toBeCalledWith(
+      expect.objectContaining({ stat: "状態BAN" }),
       "/1"
     );
   });
