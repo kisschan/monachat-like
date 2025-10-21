@@ -15,6 +15,7 @@ vi.mock("crypto", async (importOriginal) => {
     }),
   };
 });
+
 vi.mock("tripcode", () => ({
   default: vi.fn().mockImplementation(() => "resultTrip"),
 }));
