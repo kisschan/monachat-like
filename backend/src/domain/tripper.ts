@@ -1,6 +1,6 @@
 import "dotenv/config";
 import crypto from "crypto";
-import tripcode from "tripcode";
+import tripcode from "../libs/tripcode-wrapper";
 
 export interface TripperInput {
   getValue(): string;
