@@ -16,8 +16,9 @@ vi.mock("crypto", async (importOriginal) => {
   };
 });
 
-vi.mock("tripcode", () => ({
-  default: vi.fn().mockImplementation(() => "resultTrip"),
+vi.mock("../libs/tripcode-wrapper", () => ({
+  __esModule: true,
+  default: vi.fn(() => "resultTrip"),
 }));
 
 let tripInputMockValue: string;
