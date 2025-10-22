@@ -69,7 +69,7 @@ export const useLogStore = defineStore("log", () => {
     const ihash = usersStore.visibleUsers[id]?.ihash;
     let tripString = "";
     if (trip !== "") {
-      tripString = `◆${trip?.slice(0, 10)}`;
+      tripString = `◆${trip?.slice(0, 12)}`;
     } else {
       tripString = `◇${ihash?.slice(0, 6)}`;
     }
@@ -101,7 +101,7 @@ export const useLogStore = defineStore("log", () => {
     const ihash = usersStore.visibleUsers[id]?.ihash;
     let tripString = "";
     if (trip !== "") {
-      tripString = `◆${trip?.slice(0, 10)}`;
+      tripString = `◆${trip?.slice(0, 12)}`;
     } else {
       tripString = `◇${ihash?.slice(0, 6)}`;
     }

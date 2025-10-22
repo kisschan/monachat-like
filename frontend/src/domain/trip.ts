@@ -38,7 +38,7 @@ export class BlackTrip extends Trip {
   }
 
   toString(): string {
-    return `◆${this._value.slice(0, 10)}`;
+    return `◆${this._value.slice(0, 12)}`;
   }
 }
 
