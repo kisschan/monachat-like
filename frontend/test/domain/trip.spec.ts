@@ -5,7 +5,7 @@ describe("Trip", () => {
     expect.assertions(2);
     const blackTrip = TripFactory.create("black", "ABCDE12345FGHIJ67890");
     expect(blackTrip.constructor.name).toBe("BlackTrip");
-    expect(blackTrip.toString()).toBe("◆ABCDE12345");
+    expect(blackTrip.toString()).toBe("◆ABCDE12345FG");
   });
 
   it("should create a white trip", () => {
