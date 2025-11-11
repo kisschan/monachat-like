@@ -54,7 +54,7 @@
     >
       <ChatCharacter
         :key="id"
-        v-longpress.prevent.touchnone:1000="() => handleLongPressOnUser(user.ihash)"
+        v-longpress.prevent.touchnone.blockctx:1000="() => handleLongPressOnUser(user.ihash)"
         :user="{ ...user, id }"
         :messages="chatMessages[id] ?? []"
         :bubble-area-height="bubbleAreaHeight"

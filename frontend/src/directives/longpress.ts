@@ -10,6 +10,7 @@ type Handlers = {
   onPointerLeave: (e: PointerEvent) => void;
   onDragStart: (e: DragEvent) => void;
   onClickCapture: (e: MouseEvent) => void;
+  onContextMenu: (e: MouseEvent) => void; // 追加
 };
 
 const registry = new WeakMap<HTMLElement, Handlers>();
@@ -17,6 +18,7 @@ const registry = new WeakMap<HTMLElement, Handlers>();
 const vLongpress: Directive<HTMLElement, LongPressFn> = {
   mounted(el, binding) {
     const delayMs = Number(binding.arg ?? 600);
+    const blockCtx = Boolean(binding.modifiers.blockctx);
     let timer: number | null = null;
     let fired = false;
 
@@ -28,7 +30,6 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      // 左クリック or タッチのみ。ここでは prevent しない
       const isPrimaryMouse = e.pointerType === "mouse" && e.button === 0;
       const isTouch = e.pointerType === "touch";
       if (!isPrimaryMouse && !isTouch) return;
@@ -48,12 +49,20 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
     const onPointerLeave = () => clear();
     const onDragStart = () => clear();
 
-    // 合成クリックを長押し後のみ抑止（captureで先取り）
+    // 長押し成立後の合成クリックだけ抑止
     const onClickCapture = (e: MouseEvent) => {
       if (fired) {
         e.preventDefault();
         e.stopImmediatePropagation();
         fired = false;
+      }
+    };
+
+    // 長押し成立後のみコンテキストメニューを抑止（要求時だけ）
+    const onContextMenu = (e: MouseEvent) => {
+      if (blockCtx && fired) {
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
 
@@ -63,6 +72,7 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
     el.addEventListener("pointerleave", onPointerLeave, { passive: true });
     el.addEventListener("dragstart", onDragStart);
     el.addEventListener("click", onClickCapture, true);
+    el.addEventListener("contextmenu", onContextMenu); // 追加
 
     registry.set(el, {
       onPointerDown,
@@ -71,6 +81,7 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
       onPointerLeave,
       onDragStart,
       onClickCapture,
+      onContextMenu, // 追加
     });
   },
 
@@ -83,6 +94,7 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
     el.removeEventListener("pointerleave", h.onPointerLeave);
     el.removeEventListener("dragstart", h.onDragStart);
     el.removeEventListener("click", h.onClickCapture, true);
+    el.removeEventListener("contextmenu", h.onContextMenu); // 追加
     registry.delete(el);
   },
 };
