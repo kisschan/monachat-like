@@ -14,7 +14,9 @@
         </template>
         <template #body="nameSlotProps">
           <SpanText
-            v-longpress.prevent:1000="() => handleLongPressOnUser(nameSlotProps.data.ihash)"
+            v-longpress.prevent.blockctx:1000="
+              () => handleLongPressOnUser(nameSlotProps.data.ihash)
+            "
             :text="nameSlotProps.data.disp"
             :size="16"
             :type="selectedUsersIhashes[nameSlotProps.data.ihash]"

@@ -61,6 +61,8 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
       if (blockCtx && fired) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation(); // ← ここ
+        fired = false; // ← ここ（次のクリック抑止が残らないように）
       }
     };
 
@@ -70,7 +72,7 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
     el.addEventListener("pointerleave", onPointerLeave, { passive: true });
     el.addEventListener("dragstart", onDragStart);
     el.addEventListener("click", onClickCapture, true);
-    el.addEventListener("contextmenu", onContextMenu); // 追加
+    el.addEventListener("contextmenu", onContextMenu, true);
 
     registry.set(el, {
       onPointerDown,
@@ -92,7 +94,7 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
     el.removeEventListener("pointerleave", h.onPointerLeave);
     el.removeEventListener("dragstart", h.onDragStart);
     el.removeEventListener("click", h.onClickCapture, true);
-    el.removeEventListener("contextmenu", h.onContextMenu); // 追加
+    el.removeEventListener("contextmenu", h.onContextMenu, true);
     registry.delete(el);
   },
 };
