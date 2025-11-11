@@ -116,7 +116,8 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedENTER(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
     const ip = new IP(clientInfo.ipAddress);
-    const ihash = new WhiteTrip(ip, this.whiteTripper);
+    const ihash = req.name; // new WhiteTrip(ip, this.whiteTripper);
+    /*
     if (
       !this.accountRep.isPermittedToEnter(ihash.value) ||
       this.accountRep.getBannedIhashes().includes(ihash.value)
@@ -124,6 +125,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       this.clientCommunicator.disconnect();
       return;
     }
+      */
     const tripInput = new BlackTripperInput(req.trip ?? "");
     const trip = new BlackTrip(tripInput, this.blackTripper);
     let updatedCharacter = account.character.copy();
@@ -144,7 +146,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       charColor: Color.instantiateByMona({ r: req.r, g: req.g, b: req.b }),
       name: new Name(req.name),
       blackTrip: trip,
-      whiteTrip: ihash,
+      whiteTrip: trip,
     });
     updatedCharacter = updatedCharacter.updateAvatar(avatar);
     this.accountRep.updateCharacter(account.id, updatedCharacter);

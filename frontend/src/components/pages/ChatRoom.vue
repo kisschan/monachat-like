@@ -54,6 +54,7 @@
     >
       <ChatCharacter
         :key="id"
+        v-longpress.prevent.touchnone:1000="() => handleLongPressOnUser(user.ihash)"
         :user="{ ...user, id }"
         :messages="chatMessages[id] ?? []"
         :bubble-area-height="bubbleAreaHeight"
@@ -131,6 +132,7 @@ import { useSettingStore } from "@/stores/setting";
 import { useRoomStore } from "@/stores/room";
 import { useUsersStore } from "@/stores/users";
 import { useLogStore } from "@/stores/log";
+import { handleLongPressOnUser } from "@/services/longPressAction";
 
 const userStore = useUserStore();
 const usersStore = useUsersStore();

@@ -14,6 +14,7 @@
         </template>
         <template #body="nameSlotProps">
           <SpanText
+            v-longpress.prevent:1000="() => handleLongPressOnUser(nameSlotProps.data.ihash)"
             :text="nameSlotProps.data.disp"
             :size="16"
             :type="selectedUsersIhashes[nameSlotProps.data.ihash]"
@@ -71,6 +72,7 @@ import { useUsersStore } from "@/stores/users";
 import { useUIStore } from "@/stores/ui";
 import { computed } from "vue";
 import { Character } from "@/domain/character";
+import { handleLongPressOnUser } from "@/services/longPressAction";
 
 const userStore = useUserStore();
 const usersStore = useUsersStore();

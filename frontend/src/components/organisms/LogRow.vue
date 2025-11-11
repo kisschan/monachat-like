@@ -8,6 +8,7 @@
     }"
   >
     <SpanText
+      v-longpress.prevent:1000="() => handleLongPressOnUser(msg.ihash)"
       :text="msg.head"
       :type="selectedUsersIhashes[msg.ihash]"
       @click.right.prevent="changeSelectedUsersColor(msg.ihash)"
@@ -26,6 +27,7 @@ import LinkableText from "@/components/molecules/LinkableText.vue";
 import { storeToRefs } from "pinia";
 import { useUIStore } from "@/stores/ui";
 import { useSettingStore } from "@/stores/setting";
+import { handleLongPressOnUser } from "@/services/longPressAction";
 
 export type LogMessage = {
   head: string;

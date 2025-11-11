@@ -24,6 +24,17 @@
           <div class="field-wrapper">
             <SwitchField v-model="isDarkMode" label="ダークモード" label-id="darkMode" />
           </div>
+          <div class="field-wrapper">
+            <div><SpanText id="lp-action" text="長押しの動作" /></div>
+            <SelectButton
+              v-model="longPressActionView"
+              :options="longPressOptions"
+              option-label="label"
+              option-value="value"
+              aria-labelledby="lp-action"
+              class="lp-select"
+            />
+          </div>
         </AccordionContent>
       </AccordionPanel>
       <AccordionPanel value="1">
@@ -83,6 +94,7 @@ import SwitchField from "@/components/molecules/SwitchField.vue";
 import SpanText from "@/components/atoms/SpanText.vue";
 import { useSettingStore } from "@/stores/setting";
 import { useLogStore } from "@/stores/log";
+import type { LongPressAction } from "@/stores/setting";
 
 const logStore = useLogStore();
 const settingStore = useSettingStore();
@@ -118,6 +130,16 @@ const isDrawnUnderlineLog = computed({
 const isClickToChangeColorEnabled = computed({
   get: () => settingStore.isClickToChangeColorEnabled,
   set: (value) => settingStore.updateIsClickToChangeColorEnabled(value),
+});
+const longPressOptions = [
+  { label: "何もしない", value: "none" as LongPressAction },
+  { label: "無視", value: "ignore" as LongPressAction },
+  { label: "色を消す", value: "clear" as LongPressAction },
+];
+
+const longPressActionView = computed<LongPressAction>({
+  get: () => settingStore.longPressAction as LongPressAction,
+  set: (v: LongPressAction) => settingStore.updateLongPressAction(v),
 });
 const logLineNumber = computed({
   get: () => {
@@ -192,6 +214,11 @@ if (logLineNumber.value === "") {
 
 :deep(.p-togglebutton) {
   width: 100px;
+  padding: 6px 10px;
+}
+
+:deep(.lp-select .p-togglebutton) {
+  width: 150px;
   padding: 6px 10px;
 }
 </style>
