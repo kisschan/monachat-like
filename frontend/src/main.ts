@@ -3,6 +3,7 @@ import { polyfill } from "mobile-drag-drop";
 import { scrollBehaviourDragImageTranslateOverride } from "mobile-drag-drop/scroll-behaviour";
 import { createApp } from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
+import vLongpress from "./directives/longpress";
 
 // prime vue
 import PrimeVue from "primevue/config";
@@ -43,7 +44,8 @@ const LaraIndigo = definePreset(Lara, {
   },
 });
 
-const app = createApp(App);
+const app = createApp(App).directive("longpress", vLongpress);
+
 app.use(router);
 app.use(piniaInstance);
 app.use(PrimeVue, {

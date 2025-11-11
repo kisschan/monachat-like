@@ -166,6 +166,9 @@ export const useUserStore = defineStore("user", () => {
 
   const setXY = (x: number, y: number) => {
     const usersStore = useUsersStore();
+    //モバイルだと小数になる可能性があるため、強制的に数値を丸める。
+    const ix = Math.round(x);
+    const iy = Math.round(y);
 
     if (myID.value === null) {
       return;
@@ -176,8 +179,8 @@ export const useUserStore = defineStore("user", () => {
     }
     socketIOInstance.emit("SET", {
       token: myToken.value,
-      x,
-      y,
+      x: ix,
+      y: iy,
       scl: user.scl,
       stat: user.stat,
     });

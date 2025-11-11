@@ -1,5 +1,5 @@
 <template>
-  <div :class="['character-container', { 'debug-frame': isVisibleFrame }]">
+  <div :class="['character-container', { 'debug-frame': isVisibleFrame }]" v-bind="$attrs">
     <div v-if="isVisibleFrame" class="character-text debug-text">
       <SpanText :text="`(${user.x}, ${user.y})`" :size="10" />
     </div>
@@ -38,21 +38,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onUpdated, Ref } from "vue";
-import { storeToRefs } from "pinia";
-import BubbleArea from "@/components/organisms/BubbleArea.vue";
-import CharacterImage from "@/components/molecules/character/CharacterImage.vue";
-import SpanText from "@/components/atoms/SpanText.vue";
-import StatPanel from "@/components/molecules/character/StatPanel.vue";
-import { UIColor } from "@/ui/uiColor";
-import { useUIStore } from "@/stores/ui";
-import { SelectedUserColorType, useSettingStore } from "@/stores/setting";
-import { useDevStore } from "@/stores/develop";
-import { useUsersStore } from "@/stores/users";
-import { Character } from "@/domain/character";
-import { Stat } from "@/domain/stat";
-import { ChatCharacterUser, ChatMessages } from "@/domain/type";
-
 const props = withDefaults(
   defineProps<{
     user: ChatCharacterUser;
@@ -68,6 +53,21 @@ const emit = defineEmits<{
   (e: "click", obj: { id: string; ihash: string }): void;
   (e: "click-right", obj: { id: string; ihash: string }): void;
 }>();
+defineOptions({ inheritAttrs: false });
+import { computed, ref, onUpdated, Ref } from "vue";
+import { storeToRefs } from "pinia";
+import BubbleArea from "@/components/organisms/BubbleArea.vue";
+import CharacterImage from "@/components/molecules/character/CharacterImage.vue";
+import SpanText from "@/components/atoms/SpanText.vue";
+import StatPanel from "@/components/molecules/character/StatPanel.vue";
+import { UIColor } from "@/ui/uiColor";
+import { useUIStore } from "@/stores/ui";
+import { SelectedUserColorType, useSettingStore } from "@/stores/setting";
+import { useDevStore } from "@/stores/develop";
+import { useUsersStore } from "@/stores/users";
+import { Character } from "@/domain/character";
+import { Stat } from "@/domain/stat";
+import { ChatCharacterUser, ChatMessages } from "@/domain/type";
 
 // 要素
 const characterEl = ref<HTMLDivElement | null>(null);
@@ -158,6 +158,7 @@ onUpdated(() => {
 
   .character {
     pointer-events: auto;
+    touch-action: none;
 
     .character-image-container {
       position: relative;

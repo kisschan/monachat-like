@@ -25,13 +25,16 @@ type StorageKey =
   | "logInfinite"
   | "logLineNumber"
   | "selectedUsersIhashes"
-  | "log";
+  | "log"
+  | "longPressAction";
+
 const TRUE = "true";
 const FALSE = "false";
 
 export const SelectedUserColors = ["red", "blue", "green", "purple", "orange", "pink"] as const;
 export type SelectedUserColorType = (typeof SelectedUserColors)[number];
 export type TimeOptionsType = "quick" | "short" | "medium" | "long";
+export type LongPressAction = "none" | "ignore" | "clear";
 
 const getBooleanValueWithDefault = (key: StorageKey, defaultValue: boolean) => {
   const serializedValue = localStorage.getItem(`${storageKeyPrefix}/${key}`);
@@ -132,6 +135,9 @@ export const useSettingStore = defineStore("setting", () => {
   });
   const updateLogLineNumber = (value: string) =>
     updateValueWithPerpetuation(logLineNumber, "logLineNumber", value);
+  const longPressAction = ref(getValueWithDefault("longPressAction", "none"));
+  const updateLongPressAction = (value: LongPressAction) =>
+    updateValueWithPerpetuation(longPressAction, "longPressAction", value as string);
 
   const settingSetupResult = {
     selectedVolume,
@@ -158,6 +164,8 @@ export const useSettingStore = defineStore("setting", () => {
     logLineNumber,
     logLineNumberInteger,
     updateLogLineNumber,
+    longPressAction,
+    updateLongPressAction,
   };
 
   // ユーザー設定情報
