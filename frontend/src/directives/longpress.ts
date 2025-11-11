@@ -1,37 +1,54 @@
 // src/directives/longPress.ts
 import type { Directive } from "vue";
+
 type LongPressFn = (e: PointerEvent) => void;
+
+type Handlers = {
+  onPointerDown: (e: PointerEvent) => void;
+  onPointerUp: (e: PointerEvent) => void;
+  onPointerCancel: (e: PointerEvent) => void;
+  onPointerLeave: (e: PointerEvent) => void;
+  onDragStart: (e: DragEvent) => void;
+  onClickCapture: (e: MouseEvent) => void;
+};
+
+const registry = new WeakMap<HTMLElement, Handlers>();
 
 const vLongpress: Directive<HTMLElement, LongPressFn> = {
   mounted(el, binding) {
-    const delay = Number(binding.arg ?? 600);
-    let t: number | null = null;
+    const delayMs = Number(binding.arg ?? 600);
+    let timer: number | null = null;
     let fired = false;
 
     const clear = () => {
-      if (t !== null) {
-        clearTimeout(t);
-        t = null;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
       }
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      // ここで prevent しない。基準を壊さない
+      // 左クリック or タッチのみ。ここでは prevent しない
       const isPrimaryMouse = e.pointerType === "mouse" && e.button === 0;
       const isTouch = e.pointerType === "touch";
       if (!isPrimaryMouse && !isTouch) return;
+
       fired = false;
       clear();
-      t = window.setTimeout(() => {
+      timer = window.setTimeout(() => {
         fired = true;
-        if (typeof binding.value === "function") binding.value(e);
+        const fn = binding.value;
+        if (typeof fn === "function") fn(e);
         clear();
-      }, delay);
+      }, delayMs);
     };
 
-    const cancel = () => clear();
+    const onPointerUp = () => clear();
+    const onPointerCancel = () => clear();
+    const onPointerLeave = () => clear();
+    const onDragStart = () => clear();
 
-    // 長押し後に飛ぶ合成クリックだけ抑止
+    // 合成クリックを長押し後のみ抑止（captureで先取り）
     const onClickCapture = (e: MouseEvent) => {
       if (fired) {
         e.preventDefault();
@@ -41,11 +58,32 @@ const vLongpress: Directive<HTMLElement, LongPressFn> = {
     };
 
     el.addEventListener("pointerdown", onPointerDown, { passive: true });
-    el.addEventListener("pointerup", cancel, { passive: true });
-    el.addEventListener("pointercancel", cancel, { passive: true });
-    el.addEventListener("pointerleave", cancel, { passive: true });
-    el.addEventListener("dragstart", cancel);
+    el.addEventListener("pointerup", onPointerUp, { passive: true });
+    el.addEventListener("pointercancel", onPointerCancel, { passive: true });
+    el.addEventListener("pointerleave", onPointerLeave, { passive: true });
+    el.addEventListener("dragstart", onDragStart);
     el.addEventListener("click", onClickCapture, true);
+
+    registry.set(el, {
+      onPointerDown,
+      onPointerUp,
+      onPointerCancel,
+      onPointerLeave,
+      onDragStart,
+      onClickCapture,
+    });
+  },
+
+  beforeUnmount(el) {
+    const h = registry.get(el);
+    if (!h) return;
+    el.removeEventListener("pointerdown", h.onPointerDown);
+    el.removeEventListener("pointerup", h.onPointerUp);
+    el.removeEventListener("pointercancel", h.onPointerCancel);
+    el.removeEventListener("pointerleave", h.onPointerLeave);
+    el.removeEventListener("dragstart", h.onDragStart);
+    el.removeEventListener("click", h.onClickCapture, true);
+    registry.delete(el);
   },
 };
 

@@ -158,6 +158,7 @@ onUpdated(() => {
 
   .character {
     pointer-events: auto;
+    touch-action: none;
 
     .character-image-container {
       position: relative;
