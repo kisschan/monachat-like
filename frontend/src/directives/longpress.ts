@@ -11,7 +11,6 @@ type Handlers = {
   onClickCapture: (e: MouseEvent) => void;
   onContextMenu: (e: MouseEvent) => void; // 追加
 };
-
 const registry = new WeakMap<HTMLElement, Handlers>();
 
 const vLongpress: Directive<HTMLElement, LongPressFn> = {
