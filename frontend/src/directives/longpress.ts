@@ -1,4 +1,3 @@
-// src/directives/longPress.ts
 import type { Directive } from "vue";
 
 type LongPressFn = (e: PointerEvent) => void;
