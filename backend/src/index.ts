@@ -13,9 +13,19 @@ import cors from "cors";
 import { SystemLogger } from "./infrastructure/systemLogger";
 import { FourChanTripper, HashTripper } from "./domain/tripper";
 import moment from "moment";
+import { liveAuth } from "./middleware/liveAuth";
+import { Account } from "./entity/account";
 
 const app: Application = express();
 const server: http.Server = http.createServer(app);
+
+type LiveState = {
+  [room: string]: {
+    publisherId: string | null;
+  };
+};
+
+const liveState: LiveState = {};
 const ioServer: Server = new Server(server, {
   path: "/monachatchat/",
   cors: {
@@ -88,6 +98,56 @@ app.get("/api/news", (_: Request, res: Response) => {
     });
     return res.json(obj);
   });
+});
+
+app.get("/api/live/:room/status", liveAuth, (req: Request, res: Response) => {
+  const room = req.params.room;
+  const state = liveState[room];
+
+  if (!state || !state.publisherId) {
+    return res.json({
+      isLive: false,
+      publisherName: null,
+    });
+  }
+
+  const repo = AccountRepository.getInstance();
+  const user = repo.fetchUser(state.publisherId, room);
+
+  return res.json({
+    isLive: true,
+    publisherName: user?.name ?? null,
+  });
+});
+app.post("/api/live/:room/start", liveAuth, (req: Request, res: Response) => {
+  const room = req.params.room;
+  const account = (req as any).account as Account;
+
+  if (!liveState[room]) {
+    liveState[room] = { publisherId: null };
+  }
+
+  // 別の人が配信中の場合の扱いは、あとで仕様決めて良い
+  liveState[room].publisherId = account.id;
+
+  return res.json({ ok: true });
+});
+app.post("/api/live/:room/stop", liveAuth, (req: Request, res: Response) => {
+  const room = req.params.room;
+  const account = (req as any).account as Account;
+  const state = liveState[room];
+
+  if (!state || state.publisherId === null) {
+    return res.json({ ok: true }); // そもそも配信されてない
+  }
+
+  // 自分以外の配信を止められるかは仕様次第。とりあえず「本人だけ」にしておく。
+  if (state.publisherId !== account.id) {
+    return res.status(403).json({ error: "not-publisher" });
+  }
+
+  state.publisherId = null;
+  return res.json({ ok: true });
 });
 
 // サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
