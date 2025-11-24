@@ -15,17 +15,12 @@ import { FourChanTripper, HashTripper } from "./domain/tripper";
 import moment from "moment";
 import { liveAuth } from "./middleware/liveAuth";
 import { Account } from "./entity/account";
+import { LiveStateRepository } from "./infrastructure/liveState";
 
 const app: Application = express();
 const server: http.Server = http.createServer(app);
+const liveStateRepo = LiveStateRepository.getInstance();
 
-type LiveState = {
-  [room: string]: {
-    publisherId: string | null;
-  };
-};
-
-const liveState: LiveState = {};
 const ioServer: Server = new Server(server, {
   path: "/monachatchat/",
   cors: {
@@ -100,15 +95,12 @@ app.get("/api/news", (_: Request, res: Response) => {
   });
 });
 
-app.get("/api/live/:room/status", liveAuth, (req: Request, res: Response) => {
+app.get("/api/live/:room/status", liveAuth, (req, res) => {
   const room = req.params.room;
-  const state = liveState[room];
+  const state = liveStateRepo.get(room);
 
-  if (!state || !state.publisherId) {
-    return res.json({
-      isLive: false,
-      publisherName: null,
-    });
+  if (!state.publisherId) {
+    return res.json({ isLive: false, publisherName: null });
   }
 
   const repo = AccountRepository.getInstance();
@@ -119,34 +111,65 @@ app.get("/api/live/:room/status", liveAuth, (req: Request, res: Response) => {
     publisherName: user?.name ?? null,
   });
 });
-app.post("/api/live/:room/start", liveAuth, (req: Request, res: Response) => {
+
+app.post("/api/live/:room/start", liveAuth, (req, res) => {
   const room = req.params.room;
   const account = (req as any).account as Account;
+  const state = liveStateRepo.get(room);
 
-  if (!liveState[room]) {
-    liveState[room] = { publisherId: null };
+  const currentIhash = account.character.avatar.whiteTrip?.value ?? null;
+
+  const isSameAccount = state.publisherId === account.id;
+  const isSameIhash =
+    state.publisherIhash !== null &&
+    currentIhash !== null &&
+    state.publisherIhash === currentIhash;
+
+  if (state.publisherId && !isSameAccount && !isSameIhash) {
+    return res.status(409).json({ error: "already-live" });
   }
 
-  // 別の人が配信中の場合の扱いは、あとで仕様決めて良い
-  liveState[room].publisherId = account.id;
+  liveStateRepo.set(room, account.id, currentIhash);
+
+  ioServer.to(room).emit("live_status_change", {
+    room,
+    isLive: true,
+    publisherId: account.id,
+    publisherName: account.character.avatar.name.value,
+  });
 
   return res.json({ ok: true });
 });
-app.post("/api/live/:room/stop", liveAuth, (req: Request, res: Response) => {
+
+app.post("/api/live/:room/stop", liveAuth, (req, res) => {
   const room = req.params.room;
   const account = (req as any).account as Account;
-  const state = liveState[room];
+  const state = liveStateRepo.get(room);
 
-  if (!state || state.publisherId === null) {
-    return res.json({ ok: true }); // そもそも配信されてない
+  if (!state.publisherId) {
+    return res.json({ ok: true });
   }
 
-  // 自分以外の配信を止められるかは仕様次第。とりあえず「本人だけ」にしておく。
-  if (state.publisherId !== account.id) {
+  const currentIhash = account.character.avatar.whiteTrip?.value ?? null;
+  const isSameAccount = state.publisherId === account.id;
+  const isSameIhash =
+    state.publisherIhash !== null &&
+    currentIhash !== null &&
+    state.publisherIhash === currentIhash;
+
+  if (!isSameAccount && !isSameIhash) {
     return res.status(403).json({ error: "not-publisher" });
   }
 
-  state.publisherId = null;
+  liveStateRepo.clear(room);
+
+  ioServer.to(room).emit("live_status_change", {
+    room,
+    isLive: false,
+    publisherId: null,
+    publisherName: null,
+  });
+
   return res.json({ ok: true });
 });
 

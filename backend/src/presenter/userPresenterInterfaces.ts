@@ -13,6 +13,7 @@ import { IGRequest, IGResponse } from "../protocol/ig";
 import { SETRequest, SETResponse } from "../protocol/set";
 import { SLEEPResponse } from "../protocol/sleep";
 import { SUICIDERequest } from "../protocol/suicide";
+import { LiveStatusChangePayload } from "../protocol/livestatus";
 import { IDGeneratable } from "../domain/idGenerator";
 import { Character } from "../domain/character";
 
@@ -27,6 +28,7 @@ export interface IServerCommunicator {
   sendAWAKE(param: AWAKEResponse, to: string | null): void;
   sendCOUNT(param: COUNTResponse): void;
   sendUsers(users: USER[], to: string | null): void;
+  sendLiveStatusChange(param: LiveStatusChangePayload, to: string): void;
 }
 
 // クライアントからのイベントを定義したインターフェイス

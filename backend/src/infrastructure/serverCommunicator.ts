@@ -12,6 +12,7 @@ import { IG, IGResponse } from "../protocol/ig";
 import { SET, SETResponse } from "../protocol/set";
 import { SLEEP, SLEEPResponse } from "../protocol/sleep";
 import { USER } from "../protocol/user";
+import { LiveStatusChangePayload } from "../protocol/livestatus";
 
 export interface IServerNotificator {}
 
@@ -83,5 +84,9 @@ export class ServerCommunicator implements IServerCommunicator {
     if (to !== null) {
       this.server.in(to).emit("USER", users);
     }
+  }
+
+  sendLiveStatusChange(param: LiveStatusChangePayload, to: string): void {
+    this.server.in(to).emit("live_status_change", param);
   }
 }

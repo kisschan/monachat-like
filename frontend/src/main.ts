@@ -17,6 +17,15 @@ import RoomSelection from "@/components/pages/RoomSelection.vue";
 import ChatRoom from "@/components/pages/ChatRoom.vue";
 import { piniaInstance } from "./piniaInstance";
 
+import { useUserStore } from "./stores/user";
+
+// ★ 追加：グローバル Window に型を付ける
+declare global {
+  interface Window {
+    userStore: ReturnType<typeof useUserStore>;
+  }
+}
+
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -56,6 +65,11 @@ app.use(PrimeVue, {
     },
   },
 });
+
+if (import.meta.env.DEV) {
+  const userStore = useUserStore(piniaInstance);
+  window.userStore = userStore;
+}
 
 app.mount("#app");
 

@@ -19,6 +19,8 @@ import { EXITRequest, EXITResponse } from "../protocol/exit";
 import { IGRequest, IGResponse } from "../protocol/ig";
 import { ERRORRequest } from "../protocol/error";
 import { SUICIDERequest } from "../protocol/suicide";
+import { LiveStateRepository } from "../infrastructure/liveState";
+import type { LiveStatusChangePayload } from "./userPresenterInterfaces";
 import "dotenv/config";
 import { BlackTrip, WhiteTrip } from "../domain/trip";
 import { BlackTripper, WhiteTripper } from "../domain/tripper";
@@ -50,6 +52,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   private systemLogger: ISystemReceivedLogger;
   private whiteTripper: WhiteTripper;
   private blackTripper: BlackTripper;
+  private liveStateRepo: LiveStateRepository;
 
   constructor({
     client,
@@ -65,6 +68,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger = systemLogger;
     this.whiteTripper = whiteTripper;
     this.blackTripper = blackTripper;
+    this.liveStateRepo = LiveStateRepository.getInstance();
   }
 
   // EventHandler
@@ -307,12 +311,26 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   completedJoiningRoom(room: string, clientInfo: ClientInfo): void {
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
     if (account == null) return;
+
     this.accountRep.updateCharacter(
       account.id,
       account.character.copy().moveRoom(room)
     );
     const rooms = this.accountRep.getRooms();
     this.notifyRoomsChanged(rooms);
+
+    // ここでライブ状態を push
+    const live = this.liveStateRepo.get(room);
+    if (live.publisherId) {
+      const publisher = this.accountRep.fetchUser(live.publisherId, room);
+      const payload: LiveStatusChangePayload = {
+        room,
+        isLive: true,
+        publisherId: live.publisherId,
+        publisherName: publisher?.name ?? null,
+      };
+      this.serverCommunicator.sendLiveStatusChange(payload, room);
+    }
   }
 
   // private
