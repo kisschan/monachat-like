@@ -6,102 +6,128 @@
     {
       "id": "/1",
       "name": "もなちゃと",
-      "img_url": "st1.svg"
+      "img_url": "st1.svg",
+      "liveEnabled": false
     },
     {
       "id": "/2",
       "name": "祭り",
-      "img_url": "st2.svg"
+      "img_url": "st2.svg",
+      "liveEnabled": false
     },
     {
       "id": "/3",
       "name": "貞子",
-      "img_url": "st3.svg"
+      "img_url": "st3.svg",
+      "liveEnabled": false
     },
     {
       "id": "/4",
       "name": "樹海",
-      "img_url": "st4.svg"
+      "img_url": "st4.svg",
+      "liveEnabled": false
     },
     {
       "id": "/5",
       "name": "廃墟",
-      "img_url": "st5.svg"
+      "img_url": "st5.svg",
+      "liveEnabled": false
     },
     {
       "id": "/6",
       "name": "ﾊｧ?",
-      "img_url": "st6.svg"
+      "img_url": "st6.svg",
+      "liveEnabled": false
     },
     {
       "id": "/7",
       "name": "キラキラ",
-      "img_url": "st7.svg"
+      "img_url": "st7.svg",
+      "liveEnabled": false
     },
     {
       "id": "/8",
       "name": "ｻｯ",
-      "img_url": "st8.svg"
+      "img_url": "st8.svg",
+      "liveEnabled": false
     },
     {
       "id": "/9",
       "name": "食い逃げ",
-      "img_url": "st9.svg"
+      "img_url": "st9.svg",
+      "liveEnabled": false
     },
     {
       "id": "/10",
       "name": "学校",
-      "img_url": "st10.svg"
+      "img_url": "st10.svg",
+      "liveEnabled": false
     },
     {
       "id": "/11",
       "name": "喫茶",
-      "img_url": "st11.svg"
+      "img_url": "st11.svg",
+      "liveEnabled": false
     },
     {
       "id": "/12",
       "name": "Flash",
-      "img_url": "st12.svg"
+      "img_url": "st12.svg",
+      "liveEnabled": false
     },
     {
       "id": "/13",
       "name": "東京精神病院",
-      "img_url": "st13.svg"
+      "img_url": "st13.svg",
+      "liveEnabled": false
     },
     {
       "id": "/14",
       "name": "ヲタ",
-      "img_url": "st14.svg"
+      "img_url": "st14.svg",
+      "liveEnabled": false
     },
     {
       "id": "/15",
       "name": "さいたま",
-      "img_url": "saitama.svg"
+      "img_url": "saitama.svg",
+      "liveEnabled": false
     },
     {
       "id": "/16",
       "name": "BARギコ",
-      "img_url": "bargiko.svg"
+      "img_url": "bargiko.svg",
+      "liveEnabled": false
     },
     {
       "id": "/17",
       "name": "ワショーイ堂",
-      "img_url": "wasyoido.svg"
+      "img_url": "wasyoido.svg",
+      "liveEnabled": false
     },
     {
       "id": "/18",
       "name": "神社",
-      "img_url": "jinja.svg"
+      "img_url": "jinja.svg",
+      "liveEnabled": false
     },
     {
       "id": "/19",
       "name": "やまなし",
-      "img_url": "yamanasi.svg"
+      "img_url": "yamanasi.svg",
+      "liveEnabled": false
     },
     {
       "id": "/20",
       "name": "流石兄弟",
-      "img_url": "sasuga.svg"
+      "img_url": "sasuga.svg",
+      "liveEnabled": false
+    },
+    {
+      "id": "/live",
+      "name": "配信部屋",
+      "img_url": "sasuga.svg",
+      "liveEnabled": true
     }
   ]
 }

@@ -183,14 +183,29 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedEXIT(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
     const oldRoom = account.character.currentRoom;
+
+    if (oldRoom) {
+      const state = this.liveStateRepo.get(oldRoom);
+      if (state.publisherId === account.id) {
+        this.liveStateRepo.clear(oldRoom);
+
+        this.serverCommunicator.sendLiveStatusChange(
+          {
+            room: oldRoom,
+            isLive: false,
+            publisherId: null,
+            publisherName: null,
+          },
+          oldRoom
+        );
+      }
+    }
+
     let nextRoom = oldRoom !== "/MONA8094" ? "/MONA8094" : undefined;
-    const res: EXITResponse = {
-      id: account.id,
-    };
+    const res: EXITResponse = { id: account.id };
     this.clientCommunicator.moveRoom(oldRoom, nextRoom);
     this.serverCommunicator.sendEXIT(res, oldRoom);
   }
-
   receivedSET(req: SETRequest, clientInfo: ClientInfo): void {
     this.systemLogger.logReceivedSET(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
@@ -294,15 +309,28 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedDisconnect(reason, clientInfo);
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
     if (account == null) return;
-    // currentRoomがnullという異常状態でもとりあえずaliveをfalseにしたい。
+
     this.accountRep.updateAlive(account.id, false);
     const currentRoom = account.character.currentRoom;
     if (currentRoom == null) return;
-    // completedJoiningRoomの通知を送らせるため。
+
+    // ★ disconnect 時も、配信者だったら落とす
+    const state = this.liveStateRepo.get(currentRoom);
+    if (state.publisherId === account.id) {
+      this.liveStateRepo.clear(currentRoom);
+      this.serverCommunicator.sendLiveStatusChange(
+        {
+          room: currentRoom,
+          isLive: false,
+          publisherId: null,
+          publisherName: null,
+        },
+        currentRoom
+      );
+    }
+
     this.clientCommunicator.moveRoom(undefined, currentRoom);
-    const res: SLEEPResponse = {
-      id: account.id,
-    };
+    const res: SLEEPResponse = { id: account.id };
     this.serverCommunicator.sendSLEEP(res, currentRoom);
     const users = this.accountRep.fetchUsers(currentRoom);
     this.serverCommunicator.sendUsers(users, currentRoom);

@@ -1,11 +1,9 @@
 import { polyfill } from "mobile-drag-drop";
-// optional import of scroll behaviour
 import { scrollBehaviourDragImageTranslateOverride } from "mobile-drag-drop/scroll-behaviour";
 import { createApp } from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
 import vLongpress from "./directives/longpress";
 
-// prime vue
 import PrimeVue from "primevue/config";
 import { definePreset } from "@primevue/themes";
 import Lara from "@primevue/themes/lara";
@@ -16,13 +14,14 @@ import ChatEntrance from "@/components/pages/ChatEntrance.vue";
 import RoomSelection from "@/components/pages/RoomSelection.vue";
 import ChatRoom from "@/components/pages/ChatRoom.vue";
 import { piniaInstance } from "./piniaInstance";
-
+import { startWhipPublish } from "@/webrtc/whipClient";
 import { useUserStore } from "./stores/user";
 
-// ★ 追加：グローバル Window に型を付ける
+// ★ Window の型はここで一括で拡張
 declare global {
   interface Window {
     userStore: ReturnType<typeof useUserStore>;
+    startWhipPublish?: (url: string) => Promise<{ stop: () => Promise<void> }>;
   }
 }
 
@@ -35,6 +34,7 @@ export const router = createRouter({
     { name: "room", path: "/room/:id", component: ChatRoom },
   ],
 });
+
 const LaraIndigo = definePreset(Lara, {
   semantic: {
     primary: {
@@ -66,14 +66,15 @@ app.use(PrimeVue, {
   },
 });
 
+// ★ DEV 環境でだけ window にぶら下げるのも 1 つの if にまとめる
 if (import.meta.env.DEV) {
   const userStore = useUserStore(piniaInstance);
   window.userStore = userStore;
+  window.startWhipPublish = startWhipPublish;
 }
 
 app.mount("#app");
 
 polyfill({
-  // use this to make use of the scroll behaviour
   dragImageTranslateOverride: scrollBehaviourDragImageTranslateOverride,
 });

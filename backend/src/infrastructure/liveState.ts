@@ -1,6 +1,5 @@
 export type LiveRoomState = {
   publisherId: string | null;
-  publisherIhash: string | null;
 };
 
 export class LiveStateRepository {
@@ -16,20 +15,16 @@ export class LiveStateRepository {
 
   get(room: string): LiveRoomState {
     if (!this.state[room]) {
-      this.state[room] = { publisherId: null, publisherIhash: null };
+      this.state[room] = { publisherId: null };
     }
     return this.state[room];
   }
 
-  set(
-    room: string,
-    publisherId: string | null,
-    publisherIhash: string | null
-  ): void {
-    this.state[room] = { publisherId, publisherIhash };
+  set(room: string, publisherId: string | null): void {
+    this.state[room] = { publisherId };
   }
 
   clear(room: string): void {
-    this.state[room] = { publisherId: null, publisherIhash: null };
+    this.state[room] = { publisherId: null };
   }
 }

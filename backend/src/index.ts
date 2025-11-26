@@ -8,7 +8,7 @@ import { ServerCommunicator as ServerCommunicator } from "./infrastructure/serve
 import { ClientCommunicator } from "./infrastructure/clientCommunicator";
 import path from "path";
 import { AccountRepository } from "./infrastructure/accountRepository";
-import { readFile } from "fs";
+import { readFile, readFileSync } from "fs";
 import cors from "cors";
 import { SystemLogger } from "./infrastructure/systemLogger";
 import { FourChanTripper, HashTripper } from "./domain/tripper";
@@ -20,6 +20,34 @@ import { LiveStateRepository } from "./infrastructure/liveState";
 const app: Application = express();
 const server: http.Server = http.createServer(app);
 const liveStateRepo = LiveStateRepository.getInstance();
+const liveAudioOnlyByRoom: Record<string, boolean> = {};
+
+type RoomConfig = {
+  id: string;
+  name: string;
+  img_url: string;
+  liveEnabled?: boolean; // room.json に追加したフラグ
+};
+
+function isLiveEnabledRoom(roomId: string): boolean {
+  try {
+    const jsonText = readFileSync(
+      path.join(__dirname, "/config/room.json"),
+      "utf-8"
+    );
+    const parsed = JSON.parse(jsonText);
+
+    // /api/rooms が返しているのと同じ構造: { rooms: [...] } 前提
+    const rooms: RoomConfig[] = Array.isArray(parsed.rooms) ? parsed.rooms : [];
+
+    const room = rooms.find((r) => r.id === roomId);
+    return room?.liveEnabled === true;
+  } catch (e) {
+    logger.error("failed to read room.json for liveEnabled check", e);
+    // 何かおかしかったら配信禁止にしておく
+    return false;
+  }
+}
 
 const ioServer: Server = new Server(server, {
   path: "/monachatchat/",
@@ -98,17 +126,24 @@ app.get("/api/news", (_: Request, res: Response) => {
 app.get("/api/live/:room/status", liveAuth, (req, res) => {
   const room = req.params.room;
   const state = liveStateRepo.get(room);
+  const repo = AccountRepository.getInstance();
 
   if (!state.publisherId) {
-    return res.json({ isLive: false, publisherName: null });
+    return res.json({
+      isLive: false,
+      publisherId: null,
+      publisherName: null,
+      audioOnly: false,
+    });
   }
 
-  const repo = AccountRepository.getInstance();
   const user = repo.fetchUser(state.publisherId, room);
 
   return res.json({
     isLive: true,
+    publisherId: state.publisherId,
     publisherName: user?.name ?? null,
+    audioOnly: !!liveAudioOnlyByRoom[room],
   });
 });
 
@@ -117,28 +152,44 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
   const account = (req as any).account as Account;
   const state = liveStateRepo.get(room);
 
-  const currentIhash = account.character.avatar.whiteTrip?.value ?? null;
-
   const isSameAccount = state.publisherId === account.id;
-  const isSameIhash =
-    state.publisherIhash !== null &&
-    currentIhash !== null &&
-    state.publisherIhash === currentIhash;
 
-  if (state.publisherId && !isSameAccount && !isSameIhash) {
+  if (state.publisherId && !isSameAccount) {
     return res.status(409).json({ error: "already-live" });
   }
 
-  liveStateRepo.set(room, account.id, currentIhash);
+  // ★ ここで配信モードを受け取る（デフォルト false = 映像＋音声）
+  const audioOnly = !!req.body?.audioOnly;
+  liveAudioOnlyByRoom[room] = audioOnly;
+
+  liveStateRepo.set(room, account.id);
 
   ioServer.to(room).emit("live_status_change", {
     room,
     isLive: true,
     publisherId: account.id,
     publisherName: account.character.avatar.name.value,
+    audioOnly,
   });
 
   return res.json({ ok: true });
+});
+app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
+  const room = req.params.room;
+
+  if (!isLiveEnabledRoom(room)) {
+    return res.status(403).json({ error: "live-disabled" });
+  }
+
+  const stream = buildStreamName(room);
+
+  const whipUrl = `${SRS_BASE}/whip/?app=live&stream=${stream}`;
+  const whepUrl = `${SRS_BASE}/whep/?app=live&stream=${stream}`;
+
+  return res.json({
+    whipUrl,
+    whepUrl,
+  });
 });
 
 app.post("/api/live/:room/stop", liveAuth, (req, res) => {
@@ -150,30 +201,48 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
     return res.json({ ok: true });
   }
 
-  const currentIhash = account.character.avatar.whiteTrip?.value ?? null;
-  const isSameAccount = state.publisherId === account.id;
-  const isSameIhash =
-    state.publisherIhash !== null &&
-    currentIhash !== null &&
-    state.publisherIhash === currentIhash;
-
-  if (!isSameAccount && !isSameIhash) {
+  if (state.publisherId !== account.id) {
     return res.status(403).json({ error: "not-publisher" });
   }
 
   liveStateRepo.clear(room);
+  delete liveAudioOnlyByRoom[room];
 
   ioServer.to(room).emit("live_status_change", {
     room,
     isLive: false,
     publisherId: null,
     publisherName: null,
+    audioOnly: false, // ★ 配信終了時は false にしておく
   });
 
   return res.json({ ok: true });
 });
 
-// サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
+function buildStreamName(roomId: string): string {
+  const withoutSlash = roomId.replace(/^\//, "");
+  return encodeURIComponent(withoutSlash);
+}
+
+const SRS_BASE = process.env.SRS_WHIP_BASE;
+if (!SRS_BASE) {
+  throw new Error("SRS_WHIP_BASE is not set");
+}
+
+app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
+  const room = req.params.room;
+
+  const stream = buildStreamName(room);
+
+  const whipUrl = `${SRS_BASE}/whip/?app=live&stream=${stream}`;
+  const whepUrl = `${SRS_BASE}/whep/?app=live&stream=${stream}`;
+
+  return res.json({
+    whipUrl,
+    whepUrl,
+  });
+});
+
 ioServer.disconnectSockets();
 
 ioServer.on("connection", (socket: Socket): void => {

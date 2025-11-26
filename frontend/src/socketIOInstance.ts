@@ -103,4 +103,9 @@ export type LiveStatusChangePayload = {
   isLive: boolean;
   publisherId: string | null;
   publisherName: string | null;
+  audioOnly: boolean;
+};
+export type WebrtcConfigResponse = {
+  whipUrl: string;
+  whepUrl: string;
 };

@@ -109,3 +109,4 @@ export interface ITripper {
   generateTrip(str: string): string;
   generateSHATrip(str: string): string;
 }
+export { LiveStatusChangePayload };
