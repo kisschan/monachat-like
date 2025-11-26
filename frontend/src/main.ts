@@ -14,8 +14,6 @@ import ChatEntrance from "@/components/pages/ChatEntrance.vue";
 import RoomSelection from "@/components/pages/RoomSelection.vue";
 import ChatRoom from "@/components/pages/ChatRoom.vue";
 import { piniaInstance } from "./piniaInstance";
-import { startWhipPublish } from "@/webrtc/whipClient";
-import { useUserStore } from "./stores/user";
 
 export const router = createRouter({
   history: createWebHashHistory(),
