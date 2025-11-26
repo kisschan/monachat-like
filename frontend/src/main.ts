@@ -17,14 +17,6 @@ import { piniaInstance } from "./piniaInstance";
 import { startWhipPublish } from "@/webrtc/whipClient";
 import { useUserStore } from "./stores/user";
 
-// ★ Window の型はここで一括で拡張
-declare global {
-  interface Window {
-    userStore: ReturnType<typeof useUserStore>;
-    startWhipPublish?: (url: string) => Promise<{ stop: () => Promise<void> }>;
-  }
-}
-
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -65,13 +57,6 @@ app.use(PrimeVue, {
     },
   },
 });
-
-// ★ DEV 環境でだけ window にぶら下げるのも 1 つの if にまとめる
-if (import.meta.env.DEV) {
-  const userStore = useUserStore(piniaInstance);
-  window.userStore = userStore;
-  window.startWhipPublish = startWhipPublish;
-}
 
 app.mount("#app");
 
