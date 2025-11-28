@@ -20,7 +20,6 @@ import { LiveStateRepository } from "./infrastructure/liveState";
 const app: Application = express();
 const server: http.Server = http.createServer(app);
 const liveStateRepo = LiveStateRepository.getInstance();
-const liveAudioOnlyByRoom: Record<string, boolean> = {};
 
 type RoomConfig = {
   id: string;
@@ -133,7 +132,7 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
       isLive: false,
       publisherId: null,
       publisherName: null,
-      audioOnly: false,
+      audioOnly: false, // ★ 追加
     });
   }
 
@@ -143,7 +142,7 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
     isLive: true,
     publisherId: state.publisherId,
     publisherName: user?.name ?? null,
-    audioOnly: !!liveAudioOnlyByRoom[room],
+    audioOnly: state.audioOnly,
   });
 });
 
@@ -160,7 +159,6 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
 
   // ★ ここで配信モードを受け取る（デフォルト false = 映像＋音声）
   const audioOnly = !!req.body?.audioOnly;
-  liveAudioOnlyByRoom[room] = audioOnly;
 
   liveStateRepo.set(room, account.id);
 
@@ -169,7 +167,7 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
     isLive: true,
     publisherId: account.id,
     publisherName: account.character.avatar.name.value,
-    audioOnly,
+    audioOnly, // ★ 追加
   });
 
   return res.json({ ok: true });
@@ -206,7 +204,6 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
   }
 
   liveStateRepo.clear(room);
-  delete liveAudioOnlyByRoom[room];
 
   ioServer.to(room).emit("live_status_change", {
     room,
@@ -224,7 +221,7 @@ function buildStreamName(roomId: string): string {
   return encodeURIComponent(withoutSlash);
 }
 
-const SRS_BASE = process.env.SRS_WHIP_BASE;
+const SRS_BASE = process.env.SRS_WHIP_BASE; // 必須にしておくと良い
 if (!SRS_BASE) {
   throw new Error("SRS_WHIP_BASE is not set");
 }
@@ -232,6 +229,7 @@ if (!SRS_BASE) {
 app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   const room = req.params.room;
 
+  // stream 名の決め方は暫定で「room を URL エンコード」くらいでよい
   const stream = buildStreamName(room);
 
   const whipUrl = `${SRS_BASE}/whip/?app=live&stream=${stream}`;
@@ -243,6 +241,7 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   });
 });
 
+// サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
 ioServer.disconnectSockets();
 
 ioServer.on("connection", (socket: Socket): void => {

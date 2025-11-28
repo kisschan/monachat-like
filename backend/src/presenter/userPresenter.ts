@@ -195,6 +195,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
             isLive: false,
             publisherId: null,
             publisherName: null,
+            audioOnly: false,
           },
           oldRoom
         );
@@ -324,6 +325,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
           isLive: false,
           publisherId: null,
           publisherName: null,
+          audioOnly: false,
         },
         currentRoom
       );
@@ -356,6 +358,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
         isLive: true,
         publisherId: live.publisherId,
         publisherName: publisher?.name ?? null,
+        audioOnly: live.audioOnly,
       };
       this.serverCommunicator.sendLiveStatusChange(payload, room);
     }
