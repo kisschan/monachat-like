@@ -2,10 +2,16 @@ import axios from "axios";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { COUNTResParam } from "../socketIOInstance";
+// 部屋のメタデータ
+type RoomMeta = {
+  id: string;
+  name: string;
+  img_url: string;
+  liveEnabled?: boolean; // 配信許可フラグ
+};
 
 export const useRoomStore = defineStore("room", () => {
-  // 部屋のメタデータ
-  const roomMetadata = ref<{ id: string; name: string; img_url: string }[]>([]);
+  const roomMetadata = ref<RoomMeta[]>([]);
   // 部屋の人数情報
   const rooms = ref<{ [key in string]: number }>({});
 
@@ -16,11 +22,14 @@ export const useRoomStore = defineStore("room", () => {
     });
     rooms.value = { ...newRooms };
   };
+
   const syncRoomMetadata = async () => {
     const res = await axios.get(`${import.meta.env.VITE_APP_API_HOST}api/rooms`);
-    roomMetadata.value = [...res.data.rooms];
-  };
 
+    const roomsFromApi = res.data.rooms as RoomMeta[];
+
+    roomMetadata.value = [...roomsFromApi];
+  };
   // idでRoomオブジェクトを取得
   const roomObj = computed(() => (id: string | null | undefined) => {
     return roomMetadata.value.filter((r) => r.id === id)[0];

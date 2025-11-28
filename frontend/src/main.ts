@@ -1,11 +1,9 @@
 import { polyfill } from "mobile-drag-drop";
-// optional import of scroll behaviour
 import { scrollBehaviourDragImageTranslateOverride } from "mobile-drag-drop/scroll-behaviour";
 import { createApp } from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
 import vLongpress from "./directives/longpress";
 
-// prime vue
 import PrimeVue from "primevue/config";
 import { definePreset } from "@primevue/themes";
 import Lara from "@primevue/themes/lara";
@@ -26,6 +24,7 @@ export const router = createRouter({
     { name: "room", path: "/room/:id", component: ChatRoom },
   ],
 });
+
 const LaraIndigo = definePreset(Lara, {
   semantic: {
     primary: {
@@ -60,6 +59,5 @@ app.use(PrimeVue, {
 app.mount("#app");
 
 polyfill({
-  // use this to make use of the scroll behaviour
   dragImageTranslateOverride: scrollBehaviourDragImageTranslateOverride,
 });

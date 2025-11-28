@@ -97,3 +97,15 @@ export type AWAKEResParam = {
 export type SLEEPResParam = {
   id: string;
 };
+
+export type LiveStatusChangePayload = {
+  room: string;
+  isLive: boolean;
+  publisherId: string | null;
+  publisherName: string | null;
+  audioOnly: boolean;
+};
+export type WebrtcConfigResponse = {
+  whipUrl: string;
+  whepUrl: string;
+};
