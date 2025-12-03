@@ -132,7 +132,7 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
       isLive: false,
       publisherId: null,
       publisherName: null,
-      audioOnly: false, // ★ 追加
+      audioOnly: false,
     });
   }
 
@@ -225,21 +225,6 @@ const SRS_BASE = process.env.SRS_WHIP_BASE; // 必須にしておくと良い
 if (!SRS_BASE) {
   throw new Error("SRS_WHIP_BASE is not set");
 }
-
-app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
-  const room = req.params.room;
-
-  // stream 名の決め方は暫定で「room を URL エンコード」くらいでよい
-  const stream = buildStreamName(room);
-
-  const whipUrl = `${SRS_BASE}/whip/?app=live&stream=${stream}`;
-  const whepUrl = `${SRS_BASE}/whep/?app=live&stream=${stream}`;
-
-  return res.json({
-    whipUrl,
-    whepUrl,
-  });
-});
 
 // サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
 ioServer.disconnectSockets();
