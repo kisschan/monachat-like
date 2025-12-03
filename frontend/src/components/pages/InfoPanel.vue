@@ -17,6 +17,10 @@
         <span v-if="!isKBMode">開発</span>
         <i v-else class="pi pi-github"></i>
       </Tab>
+      <Tab value="4">
+        <span v-if="!isKBMode">配信</span>
+        <i v-else class="pi pi-github"></i>
+      </Tab>
     </TabList>
     <TabPanels>
       <TabPanel value="0">
@@ -30,6 +34,9 @@
       </TabPanel>
       <TabPanel value="3">
         <DevArea />
+      </TabPanel>
+      <TabPanel value="4">
+        <LiveArea />
       </TabPanel>
     </TabPanels>
   </Tabs>
@@ -45,6 +52,7 @@ import ChatLog from "@/components/organisms/panel/ChatLog.vue";
 import UserManager from "@/components/organisms/panel/UserManager.vue";
 import SettingsFields from "@/components/organisms/panel/SettingsFields.vue";
 import DevArea from "@/components/organisms/panel/DevArea.vue";
+import LiveArea from "../organisms/panel/LiveArea.vue";
 import { storeToRefs } from "pinia";
 import { useSettingStore } from "@/stores/setting";
 import { useUIStore } from "@/stores/ui";

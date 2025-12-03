@@ -19,6 +19,8 @@ import { EXITRequest, EXITResponse } from "../protocol/exit";
 import { IGRequest, IGResponse } from "../protocol/ig";
 import { ERRORRequest } from "../protocol/error";
 import { SUICIDERequest } from "../protocol/suicide";
+import { LiveStateRepository } from "../infrastructure/liveState";
+import type { LiveStatusChangePayload } from "./userPresenterInterfaces";
 import "dotenv/config";
 import { BlackTrip, WhiteTrip } from "../domain/trip";
 import { BlackTripper, WhiteTripper } from "../domain/tripper";
@@ -50,6 +52,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   private systemLogger: ISystemReceivedLogger;
   private whiteTripper: WhiteTripper;
   private blackTripper: BlackTripper;
+  private liveStateRepo: LiveStateRepository;
 
   constructor({
     client,
@@ -65,6 +68,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger = systemLogger;
     this.whiteTripper = whiteTripper;
     this.blackTripper = blackTripper;
+    this.liveStateRepo = LiveStateRepository.getInstance();
   }
 
   // EventHandler
@@ -179,14 +183,30 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedEXIT(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
     const oldRoom = account.character.currentRoom;
+
+    if (oldRoom) {
+      const state = this.liveStateRepo.get(oldRoom);
+      if (state.publisherId === account.id) {
+        this.liveStateRepo.clear(oldRoom);
+
+        this.serverCommunicator.sendLiveStatusChange(
+          {
+            room: oldRoom,
+            isLive: false,
+            publisherId: null,
+            publisherName: null,
+            audioOnly: false,
+          },
+          oldRoom
+        );
+      }
+    }
+
     let nextRoom = oldRoom !== "/MONA8094" ? "/MONA8094" : undefined;
-    const res: EXITResponse = {
-      id: account.id,
-    };
+    const res: EXITResponse = { id: account.id };
     this.clientCommunicator.moveRoom(oldRoom, nextRoom);
     this.serverCommunicator.sendEXIT(res, oldRoom);
   }
-
   receivedSET(req: SETRequest, clientInfo: ClientInfo): void {
     this.systemLogger.logReceivedSET(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
@@ -290,15 +310,29 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.systemLogger.logReceivedDisconnect(reason, clientInfo);
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
     if (account == null) return;
-    // currentRoomがnullという異常状態でもとりあえずaliveをfalseにしたい。
+
     this.accountRep.updateAlive(account.id, false);
     const currentRoom = account.character.currentRoom;
     if (currentRoom == null) return;
-    // completedJoiningRoomの通知を送らせるため。
+
+    // ★ disconnect 時も、配信者だったら落とす
+    const state = this.liveStateRepo.get(currentRoom);
+    if (state.publisherId === account.id) {
+      this.liveStateRepo.clear(currentRoom);
+      this.serverCommunicator.sendLiveStatusChange(
+        {
+          room: currentRoom,
+          isLive: false,
+          publisherId: null,
+          publisherName: null,
+          audioOnly: false,
+        },
+        currentRoom
+      );
+    }
+
     this.clientCommunicator.moveRoom(undefined, currentRoom);
-    const res: SLEEPResponse = {
-      id: account.id,
-    };
+    const res: SLEEPResponse = { id: account.id };
     this.serverCommunicator.sendSLEEP(res, currentRoom);
     const users = this.accountRep.fetchUsers(currentRoom);
     this.serverCommunicator.sendUsers(users, currentRoom);
@@ -307,12 +341,27 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   completedJoiningRoom(room: string, clientInfo: ClientInfo): void {
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
     if (account == null) return;
+
     this.accountRep.updateCharacter(
       account.id,
       account.character.copy().moveRoom(room)
     );
     const rooms = this.accountRep.getRooms();
     this.notifyRoomsChanged(rooms);
+
+    // ここでライブ状態を push
+    const live = this.liveStateRepo.get(room);
+    if (live.publisherId) {
+      const publisher = this.accountRep.fetchUser(live.publisherId, room);
+      const payload: LiveStatusChangePayload = {
+        room,
+        isLive: true,
+        publisherId: live.publisherId,
+        publisherName: publisher?.name ?? null,
+        audioOnly: live.audioOnly,
+      };
+      this.serverCommunicator.sendLiveStatusChange(payload, room);
+    }
   }
 
   // private
