@@ -6,14 +6,17 @@ export type WhipPublishOptions = {
   audioOnly?: boolean;
 };
 
-export async function startWhipPublish(
-  whipUrl: string,
-  options: WhipPublishOptions = {},
-): Promise<WhipPublishHandle> {
-  const audioOnly = options.audioOnly === true;
+export class MediaAcquireError extends Error {
+  code: "permission-denied" | "no-device" | "constraint-failed" | "unknown";
 
-  // 1. メディア取得
-  const constraints: MediaStreamConstraints = audioOnly
+  constructor(code: MediaAcquireError["code"], message?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+async function getLocalMediaStream(audioOnly: boolean): Promise<MediaStream> {
+  const primaryConstraints: MediaStreamConstraints = audioOnly
     ? { audio: true, video: false }
     : {
         audio: true,
@@ -23,57 +26,90 @@ export async function startWhipPublish(
         },
       };
 
-  const localStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-  // 2. RTCPeerConnection 準備
-  const pc = new RTCPeerConnection({
-    iceServers: [], // SRS ICE-lite 前提なら空でOK
-  });
-
-  localStream.getTracks().forEach((track) => {
-    pc.addTrack(track, localStream);
-  });
-
-  const offer = await pc.createOffer({
-    offerToReceiveAudio: false,
-    offerToReceiveVideo: false,
-  });
-  await pc.setLocalDescription(offer);
-
-  // 3. WHIP エンドポイントに SDP を送信
-  const res = await fetch(whipUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/sdp",
-    },
-    body: offer.sdp ?? "",
-  });
-
-  if (!res.ok) {
-    pc.close();
-    localStream.getTracks().forEach((t) => t.stop());
-    throw new Error(`WHIP POST failed: status=${res.status}`);
-  }
-
-  const answerSdp = await res.text();
-  await pc.setRemoteDescription(
-    new RTCSessionDescription({
-      type: "answer",
-      sdp: answerSdp,
-    }),
-  );
-
-  const resourceUrl = res.headers.get("Location") ?? whipUrl;
-
-  const stop = async () => {
-    try {
-      // WHIP セッション削除
-      await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
-    } finally {
-      pc.close();
-      localStream.getTracks().forEach((t) => t.stop());
+  try {
+    return await navigator.mediaDevices.getUserMedia(primaryConstraints);
+  } catch (e: unknown) {
+    if (e instanceof DOMException) {
+      if (e.name === "NotAllowedError" || e.name === "SecurityError") {
+        throw new MediaAcquireError("permission-denied", e.message);
+      }
+      if (e.name === "NotFoundError") {
+        throw new MediaAcquireError("no-device", e.message);
+      }
+      if (e.name === "OverconstrainedError") {
+        throw new MediaAcquireError("constraint-failed", e.message);
+      }
     }
-  };
 
-  return { stop };
+    throw new MediaAcquireError("unknown", e instanceof Error ? e.message : String(e));
+  }
+}
+
+export async function startWhipPublish(
+  whipUrl: string,
+  options: WhipPublishOptions = {},
+): Promise<WhipPublishHandle> {
+  const audioOnly = options.audioOnly === true;
+
+  let localStream: MediaStream | null = null;
+  let pc: RTCPeerConnection | null = null;
+
+  try {
+    // 1. メディア取得
+    localStream = await getLocalMediaStream(audioOnly);
+
+    // 2. RTCPeerConnection 準備
+    pc = new RTCPeerConnection({
+      iceServers: [], // SRS ICE-lite 前提なら空でOK
+    });
+
+    localStream.getTracks().forEach((track) => {
+      pc?.addTrack(track, localStream as MediaStream);
+    });
+
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: false,
+      offerToReceiveVideo: false,
+    });
+    await pc.setLocalDescription(offer);
+
+    // 3. WHIP エンドポイントに SDP を送信
+    const res = await fetch(whipUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/sdp",
+      },
+      body: offer.sdp ?? "",
+    });
+
+    if (!res.ok) {
+      throw new Error(`WHIP POST failed: status=${res.status}`);
+    }
+
+    const answerSdp = await res.text();
+    await pc.setRemoteDescription(
+      new RTCSessionDescription({
+        type: "answer",
+        sdp: answerSdp,
+      }),
+    );
+
+    const resourceUrl = res.headers.get("Location") ?? whipUrl;
+
+    const stop = async () => {
+      try {
+        // WHIP セッション削除
+        await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
+      } finally {
+        pc?.close();
+        localStream?.getTracks().forEach((t) => t.stop());
+      }
+    };
+
+    return { stop };
+  } catch (e) {
+    pc?.close();
+    localStream?.getTracks().forEach((t) => t.stop());
+    throw e;
+  }
 }

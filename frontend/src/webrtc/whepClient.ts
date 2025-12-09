@@ -6,6 +6,17 @@ export type WhepSubscribeOptions = {
   audioOnly?: boolean;
 };
 
+export class WhepRequestError extends Error {
+  status: number;
+  body?: string;
+
+  constructor(status: number, body?: string) {
+    super(`WHEP POST failed: status=${status}`);
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function startWhepSubscribe(
   whepUrl: string,
   videoEl: HTMLVideoElement,

@@ -65,14 +65,18 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import axios, { AxiosError } from "axios";
+import axios from "axios";
 import { useUserStore } from "@/stores/user";
 import { useRoomStore } from "@/stores/room";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import { socketIOInstance, type LiveStatusChangePayload } from "@/socketIOInstance";
-import { startWhipPublish, type WhipPublishHandle } from "@/webrtc/whipClient";
-import { startWhepSubscribe, type WhepSubscribeHandle } from "@/webrtc/whepClient";
+import { MediaAcquireError, startWhipPublish, type WhipPublishHandle } from "@/webrtc/whipClient";
+import {
+  WhepRequestError,
+  startWhepSubscribe,
+  type WhepSubscribeHandle,
+} from "@/webrtc/whepClient";
 import PrimeButton from "primevue/button";
 
 const userStore = useUserStore();
@@ -155,39 +159,6 @@ const loadStatus = async () => {
   isAudioOnlyLive.value = res.audioOnly ?? false;
 };
 
-const buildStartLiveErrorMessage = (e: unknown): string => {
-  if (axios.isAxiosError(e)) {
-    const err = e as AxiosError<unknown>;
-    const status = err.response?.status;
-
-    if (status === 409) {
-      return "他のユーザーがすでに配信中です。配信が終了してから再度お試しください。";
-    }
-    if (status === 401 || status === 403) {
-      return "配信する権限がありません。部屋に再入室してからお試しください。";
-    }
-    if (status === 404) {
-      return "指定された部屋が存在しないか閉じられています。";
-    }
-  }
-
-  return "サーバ側の配信開始に失敗しました。時間をおいて再度お試しください。";
-};
-
-const buildWhipPublishErrorMessage = (e: unknown): string => {
-  // getUserMedia / RTCPeerConnection 由来のエラーが来る想定
-  if (e instanceof DOMException) {
-    if (e.name === "NotAllowedError") {
-      return "ブラウザでマイク・カメラの使用が拒否されています。設定を確認してください。";
-    }
-    if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
-      return "利用可能なマイク・カメラが見つかりません。デバイスを接続してから再度お試しください。";
-    }
-  }
-
-  return "ブラウザ側の配信開始に失敗しました。ネットワークやデバイスの設定を確認してください。";
-};
-
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
 
 const onClickStartPublish = async () => {
@@ -197,57 +168,67 @@ const onClickStartPublish = async () => {
   errorMessage.value = null;
   isBusyPublish.value = true;
 
+  let needsRollback = false;
+
   try {
-    try {
-      // 1. まずサーバ側でロック（配信者登録）を取る
-      await startLive(roomId.value, token.value, isPublishAudioOnly.value);
-    } catch (e: unknown) {
-      errorMessage.value = buildStartLiveErrorMessage(e);
-      console.error(e);
-      // ここではロックをとれていない前提なので、そのまま解除する。
-      return;
-    }
+    // 1. まずサーバ側でロック（配信者登録）を取る
+    await startLive(roomId.value, token.value, isPublishAudioOnly.value);
+    needsRollback = true;
 
     // 2. WHIP 用設定を取得
-    let whipUrl: string;
-    try {
-      const res = await fetchWebrtcConfig(roomId.value, token.value);
-      whipUrl = res.whipUrl;
-    } catch (e) {
-      errorMessage.value = "配信用の設定取得に失敗しました。時間をおいて再度お試しください。";
-      console.error(e);
-      // サーバ側のロックだけは取れているので、ここでロールバック
-      try {
-        await stopLive(roomId.value, token.value);
-      } catch (stopErr) {
-        console.error("stopLive failed after fetchWebrtcConfig error", stopErr);
-      }
-      return;
-    }
+    const { whipUrl } = await fetchWebrtcConfig(roomId.value, token.value);
 
-    try {
-      const handle = await startWhipPublish(whipUrl, {
-        audioOnly: isPublishAudioOnly.value,
-      });
-      publishHandle.value = handle;
-    } catch (e: unknown) {
-      errorMessage.value = buildWhipPublishErrorMessage(e);
-      console.error(e);
-      // ここもロールバック
-      try {
-        await stopLive(roomId.value, token.value);
-      } catch (stopErr) {
-        console.error("stopLive failed after startWhipPublish error", stopErr);
-      }
-      return;
-    }
+    const handle = await startWhipPublish(whipUrl, {
+      audioOnly: isPublishAudioOnly.value,
+    });
+    publishHandle.value = handle;
+    needsRollback = false;
     await loadStatus();
+  } catch (e) {
+    await onClickStartPublishCatch(e, needsRollback);
   } finally {
     isBusyPublish.value = false;
   }
 };
 
-// 配信停止
+// エラー時の処理
+const onClickStartPublishCatch = async (e: unknown, rollback: boolean) => {
+  if (axios.isAxiosError(e)) {
+    const status = e.response?.status;
+    const code = e.response?.data?.error;
+
+    if (status === 409 && code === "already-live") {
+      errorMessage.value = "この部屋では既に他のユーザーが配信中です。";
+    } else if (status === 403 && code === "live-disabled") {
+      errorMessage.value = "この部屋では配信機能は利用できません。";
+    } else if (status === 403 && code === "forbidden") {
+      errorMessage.value = "配信権限がありません。";
+    } else {
+      errorMessage.value = "配信開始に失敗しました（サーバーエラー）。";
+    }
+  } else if (e instanceof MediaAcquireError) {
+    if (e.code === "permission-denied") {
+      errorMessage.value = "マイクやカメラへのアクセスがブラウザに拒否されています。";
+    } else if (e.code === "no-device") {
+      errorMessage.value = "利用可能なマイク／カメラが見つかりません。";
+    } else {
+      errorMessage.value = "マイク／カメラの取得に失敗しました。";
+    }
+  } else {
+    errorMessage.value = "予期しないエラーが発生しました。";
+  }
+
+  console.error(e);
+
+  if (rollback) {
+    try {
+      await stopLive(roomId.value, token.value);
+    } catch (stopErr) {
+      console.error("stopLive failed after start publish error", stopErr);
+    }
+  }
+};
+
 const onClickStopPublish = async () => {
   if (!roomId.value || !token.value) return;
   if (!canStopPublish.value) return;
@@ -265,8 +246,13 @@ const onClickStopPublish = async () => {
     await loadStatus();
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
-      if (e.response?.status === 403) {
+      const status = e.response?.status;
+      const code = e.response?.data?.error;
+
+      if (status === 403 && code === "not-publisher") {
         errorMessage.value = "配信者ではないため停止できません。";
+      } else if (status === 403) {
+        errorMessage.value = "配信を停止する権限がありません。";
       } else {
         errorMessage.value = "配信停止に失敗しました。";
       }
@@ -294,7 +280,28 @@ const onClickStartWatch = async () => {
       audioOnly: isWatchAudioOnly.value,
     });
   } catch (e: unknown) {
-    errorMessage.value = "視聴開始に失敗しました。";
+    if (axios.isAxiosError(e)) {
+      const status = e.response?.status;
+      const code = e.response?.data?.error;
+
+      if (status === 404 || status === 410) {
+        errorMessage.value = "配信が終了しています。ページを再読み込みしてください。";
+      } else if (status === 403 && code === "live-disabled") {
+        errorMessage.value = "この部屋では配信機能は利用できません。";
+      } else {
+        errorMessage.value = "視聴開始に失敗しました。";
+      }
+    } else if (e instanceof WhepRequestError) {
+      if (e.status === 404 || e.status === 410) {
+        errorMessage.value = "配信が終了しています。ページを再読み込みしてください。";
+      } else if (e.status === 400) {
+        errorMessage.value = "視聴開始に失敗しました。（接続に問題があります）";
+      } else {
+        errorMessage.value = "視聴開始に失敗しました。";
+      }
+    } else {
+      errorMessage.value = "視聴開始に失敗しました。";
+    }
     console.error(e);
   } finally {
     isBusyWatch.value = false;
