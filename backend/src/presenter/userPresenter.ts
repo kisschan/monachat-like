@@ -119,6 +119,10 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   receivedENTER(req: ENTERRequest, clientInfo: ClientInfo): void {
     this.systemLogger.logReceivedENTER(req, clientInfo);
     const account = this.authorize(req.token, clientInfo.socketId);
+    const oldRoom = account.character.currentRoom;
+
+    this.stopLiveIfPublisher(oldRoom, account.id);
+
     const ip = new IP(clientInfo.ipAddress);
     const ihash = new WhiteTrip(ip, this.whiteTripper);
     if (
@@ -184,23 +188,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const account = this.authorize(req.token, clientInfo.socketId);
     const oldRoom = account.character.currentRoom;
 
-    if (oldRoom) {
-      const state = this.liveStateRepo.get(oldRoom);
-      if (state.publisherId === account.id) {
-        this.liveStateRepo.clear(oldRoom);
-
-        this.serverCommunicator.sendLiveStatusChange(
-          {
-            room: oldRoom,
-            isLive: false,
-            publisherId: null,
-            publisherName: null,
-            audioOnly: false,
-          },
-          oldRoom
-        );
-      }
-    }
+    this.stopLiveIfPublisher(oldRoom, account.id);
 
     let nextRoom = oldRoom !== "/MONA8094" ? "/MONA8094" : undefined;
     const res: EXITResponse = { id: account.id };
@@ -315,21 +303,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const currentRoom = account.character.currentRoom;
     if (currentRoom == null) return;
 
-    // ★ disconnect 時も、配信者だったら落とす
-    const state = this.liveStateRepo.get(currentRoom);
-    if (state.publisherId === account.id) {
-      this.liveStateRepo.clear(currentRoom);
-      this.serverCommunicator.sendLiveStatusChange(
-        {
-          room: currentRoom,
-          isLive: false,
-          publisherId: null,
-          publisherName: null,
-          audioOnly: false,
-        },
-        currentRoom
-      );
-    }
+    this.stopLiveIfPublisher(currentRoom, account.id);
 
     this.clientCommunicator.moveRoom(undefined, currentRoom);
     const res: SLEEPResponse = { id: account.id };
@@ -388,5 +362,28 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       rooms: newRooms,
     };
     this.serverCommunicator.sendCOUNT(res);
+  }
+
+  private stopLiveIfPublisher(
+    room: string | undefined,
+    accountId: string
+  ): void {
+    if (!room) return;
+
+    const state = this.liveStateRepo.get(room);
+    if (!state || state.publisherId !== accountId) return;
+
+    this.liveStateRepo.clear(room);
+
+    this.serverCommunicator.sendLiveStatusChange(
+      {
+        room,
+        isLive: false,
+        publisherId: null,
+        publisherName: null,
+        audioOnly: false,
+      },
+      room
+    );
   }
 }
