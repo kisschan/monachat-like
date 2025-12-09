@@ -11,7 +11,9 @@
     <section class="live-controls">
       <div v-if="liveEnabled">
         <h3>配信者コントロール</h3>
-
+        <p v-if="errorMessage" class="error">
+          {{ errorMessage }}
+        </p>
         <!-- 追加：配信モード切り替え -->
         <div class="mode-switch">
           <label>
@@ -25,8 +27,8 @@
         </div>
 
         <div class="buttons">
-          <button :disabled="!canStartPublish" @click="onClickStartPublish">配信開始</button>
-          <button :disabled="!canStopPublish" @click="onClickStopPublish">配信停止</button>
+          <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
+          <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
         </div>
         <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
       </div>
@@ -48,8 +50,8 @@
         </div>
 
         <div class="buttons">
-          <button :disabled="!canStartWatch" @click="onClickStartWatch">視聴開始</button>
-          <button :disabled="!canStopWatch" @click="onClickStopWatch">視聴停止</button>
+          <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
+          <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
         </div>
         <video ref="videoRef" class="live-video" autoplay playsinline controls></video>
 
@@ -58,16 +60,12 @@
         </p>
       </div>
     </section>
-
-    <p v-if="errorMessage" class="error">
-      {{ errorMessage }}
-    </p>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { useUserStore } from "@/stores/user";
 import { useRoomStore } from "@/stores/room";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
@@ -75,6 +73,7 @@ import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import { socketIOInstance, type LiveStatusChangePayload } from "@/socketIOInstance";
 import { startWhipPublish, type WhipPublishHandle } from "@/webrtc/whipClient";
 import { startWhepSubscribe, type WhepSubscribeHandle } from "@/webrtc/whepClient";
+import PrimeButton from "primevue/button";
 
 const userStore = useUserStore();
 const roomStore = useRoomStore();
@@ -153,7 +152,40 @@ const loadStatus = async () => {
   isLive.value = res.isLive;
   publisherName.value = res.publisherName;
   publisherId.value = res.publisherId;
-  isAudioOnlyLive.value = res.audioOnly ?? false; // ★ 追加
+  isAudioOnlyLive.value = res.audioOnly ?? false;
+};
+
+const buildStartLiveErrorMessage = (e: unknown): string => {
+  if (axios.isAxiosError(e)) {
+    const err = e as AxiosError<unknown>;
+    const status = err.response?.status;
+
+    if (status === 409) {
+      return "他のユーザーがすでに配信中です。配信が終了してから再度お試しください。";
+    }
+    if (status === 401 || status === 403) {
+      return "配信する権限がありません。部屋に再入室してからお試しください。";
+    }
+    if (status === 404) {
+      return "指定された部屋が存在しないか閉じられています。";
+    }
+  }
+
+  return "サーバ側の配信開始に失敗しました。時間をおいて再度お試しください。";
+};
+
+const buildWhipPublishErrorMessage = (e: unknown): string => {
+  // getUserMedia / RTCPeerConnection 由来のエラーが来る想定
+  if (e instanceof DOMException) {
+    if (e.name === "NotAllowedError") {
+      return "ブラウザでマイク・カメラの使用が拒否されています。設定を確認してください。";
+    }
+    if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+      return "利用可能なマイク・カメラが見つかりません。デバイスを接続してから再度お試しください。";
+    }
+  }
+
+  return "ブラウザ側の配信開始に失敗しました。ネットワークやデバイスの設定を確認してください。";
 };
 
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
@@ -166,25 +198,49 @@ const onClickStartPublish = async () => {
   isBusyPublish.value = true;
 
   try {
-    const { whipUrl } = await fetchWebrtcConfig(roomId.value, token.value);
-
-    let handle: WhipPublishHandle;
     try {
-      handle = await startWhipPublish(whipUrl, {
-        audioOnly: isPublishAudioOnly.value, // WHIP 側にも渡している前提
-      });
-      publishHandle.value = handle;
-    } catch (webrtcErr) {
-      errorMessage.value = "配信開始に失敗しました。";
-      console.error(webrtcErr);
+      // 1. まずサーバ側でロック（配信者登録）を取る
+      await startLive(roomId.value, token.value, isPublishAudioOnly.value);
+    } catch (e: unknown) {
+      errorMessage.value = buildStartLiveErrorMessage(e);
+      console.error(e);
+      // ここではロックをとれていない前提なので、そのまま解除する。
+      return;
+    }
+
+    // 2. WHIP 用設定を取得
+    let whipUrl: string;
+    try {
+      const res = await fetchWebrtcConfig(roomId.value, token.value);
+      whipUrl = res.whipUrl;
+    } catch (e) {
+      errorMessage.value = "配信用の設定取得に失敗しました。時間をおいて再度お試しください。";
+      console.error(e);
+      // サーバ側のロックだけは取れているので、ここでロールバック
+      try {
+        await stopLive(roomId.value, token.value);
+      } catch (stopErr) {
+        console.error("stopLive failed after fetchWebrtcConfig error", stopErr);
+      }
       return;
     }
 
     try {
-      // ★ サーバに audioOnly を伝える
-      await startLive(roomId.value, token.value, isPublishAudioOnly.value);
-    } catch (e: unknown) {}
-
+      const handle = await startWhipPublish(whipUrl, {
+        audioOnly: isPublishAudioOnly.value,
+      });
+      publishHandle.value = handle;
+    } catch (e: unknown) {
+      errorMessage.value = buildWhipPublishErrorMessage(e);
+      console.error(e);
+      // ここもロールバック
+      try {
+        await stopLive(roomId.value, token.value);
+      } catch (stopErr) {
+        console.error("stopLive failed after startWhipPublish error", stopErr);
+      }
+      return;
+    }
     await loadStatus();
   } finally {
     isBusyPublish.value = false;
@@ -269,14 +325,23 @@ const onClickStopWatch = async () => {
 const handleLiveStatusChange = (payload: LiveStatusChangePayload) => {
   if (!userStore.currentRoom || userStore.currentRoom.id !== payload.room) return;
 
+  const wasLive = isLive.value;
+
   isLive.value = payload.isLive;
   publisherName.value = payload.publisherName;
   publisherId.value = payload.publisherId;
   isAudioOnlyLive.value = payload.audioOnly ?? false;
 
+  // 視聴側
   if (!payload.isLive && subscribeHandle.value) {
     subscribeHandle.value.stop().catch(() => {});
     subscribeHandle.value = null;
+  }
+
+  // 配信側（サーバから isLive=false が飛んできたら止める）
+  if (wasLive && !payload.isLive && publishHandle.value) {
+    publishHandle.value.stop().catch(() => {});
+    publishHandle.value = null;
   }
 };
 
