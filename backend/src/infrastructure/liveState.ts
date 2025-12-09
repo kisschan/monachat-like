@@ -21,7 +21,7 @@ export class LiveStateRepository {
     return this.state[room];
   }
 
-  set(room: string, publisherId: string | null, audioOnly = false): void {
+  set(room: string, publisherId: string | null, audioOnly: boolean): void {
     this.state[room] = { publisherId, audioOnly };
   }
 

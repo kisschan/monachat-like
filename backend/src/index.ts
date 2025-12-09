@@ -153,6 +153,10 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
 
   const isSameAccount = state.publisherId === account.id;
 
+  if (!isLiveEnabledRoom(room)) {
+    return res.status(403).json({ error: "live-disabled" });
+  }
+
   if (state.publisherId && !isSameAccount) {
     return res.status(409).json({ error: "already-live" });
   }
