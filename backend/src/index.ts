@@ -164,7 +164,7 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
   // ★ ここで配信モードを受け取る（デフォルト false = 映像＋音声）
   const audioOnly = !!req.body?.audioOnly;
 
-  liveStateRepo.set(room, account.id);
+  liveStateRepo.set(room, account.id, audioOnly);
 
   ioServer.to(room).emit("live_status_change", {
     room,
