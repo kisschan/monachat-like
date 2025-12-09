@@ -1,4 +1,3 @@
-// src/middleware/liveAuth.ts
 import { Request, Response, NextFunction } from "express";
 import { AccountRepository } from "../infrastructure/accountRepository";
 import { Account } from "../entity/account";
@@ -36,6 +35,12 @@ export function liveAuth(
 
   const requestedRoom = req.params.room;
   const currentRoom = account.character.currentRoom;
+  const alive = account.alive;
+
+  if (!alive) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
 
   if (!requestedRoom || currentRoom !== requestedRoom) {
     res.status(403).json({ error: "forbidden" });
