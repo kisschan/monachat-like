@@ -65,7 +65,7 @@ export async function startWhepSubscribe(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.error(audioOnly ? "WHEP error (audioOnly)" : "WHEP error", res.status, text);
-    throw new Error(`WHEP POST failed${audioOnly ? " (audioOnly)" : ""}: status=${res.status}`);
+    throw new WhepRequestError(res.status, text);
   }
 
   const answerSdp = await res.text();
