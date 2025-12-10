@@ -16,6 +16,7 @@ import moment from "moment";
 import { liveAuth } from "./middleware/liveAuth";
 import { Account } from "./entity/account";
 import { LiveStateRepository } from "./infrastructure/liveState";
+import { isLiveConfigured, getWhipBase } from "./config/liveConfig";
 
 const app: Application = express();
 const server: http.Server = http.createServer(app);
@@ -30,6 +31,7 @@ type RoomConfig = {
 
 function isLiveEnabledRoom(roomId: string): boolean {
   try {
+    //TODO:config に依存なので、要リファクタリング
     const jsonText = readFileSync(
       path.join(__dirname, "/config/room.json"),
       "utf-8"
@@ -123,6 +125,11 @@ app.get("/api/news", (_: Request, res: Response) => {
 });
 
 app.get("/api/live/:room/status", liveAuth, (req, res) => {
+  if (!isLiveConfigured) {
+    res.status(503).json({ error: "live-not-configured" });
+    return;
+  }
+
   const room = req.params.room;
   const state = liveStateRepo.get(room);
   const repo = AccountRepository.getInstance();
@@ -147,6 +154,11 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
 });
 
 app.post("/api/live/:room/start", liveAuth, (req, res) => {
+  if (!isLiveConfigured) {
+    res.status(503).json({ error: "live-not-configured" });
+    return;
+  }
+
   const room = req.params.room;
   const account = (req as any).account as Account;
   const state = liveStateRepo.get(room);
@@ -177,6 +189,12 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
   return res.json({ ok: true });
 });
 app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
+  if (!isLiveConfigured) {
+    res.status(503).json({ error: "live-not-configured" });
+    return;
+  }
+
+  const whipBase = getWhipBase();
   const room = req.params.room;
 
   if (!isLiveEnabledRoom(room)) {
@@ -185,8 +203,8 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
 
   const stream = buildStreamName(room);
 
-  const whipUrl = `${SRS_BASE}/whip/?app=live&stream=${stream}`;
-  const whepUrl = `${SRS_BASE}/whep/?app=live&stream=${stream}`;
+  const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}`;
+  const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}`;
 
   return res.json({
     whipUrl,
@@ -195,6 +213,11 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
 });
 
 app.post("/api/live/:room/stop", liveAuth, (req, res) => {
+  if (!isLiveConfigured) {
+    res.status(503).json({ error: "live-not-configured" });
+    return;
+  }
+
   const room = req.params.room;
   const account = (req as any).account as Account;
   const state = liveStateRepo.get(room);
@@ -223,11 +246,6 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
 function buildStreamName(roomId: string): string {
   const withoutSlash = roomId.replace(/^\//, "");
   return encodeURIComponent(withoutSlash);
-}
-
-const SRS_BASE = process.env.SRS_WHIP_BASE; // 必須にしておくと良い
-if (!SRS_BASE) {
-  throw new Error("SRS_WHIP_BASE is not set");
 }
 
 // サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
