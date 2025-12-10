@@ -190,24 +190,40 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
 });
 app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   if (!isLiveConfigured) {
-    res.status(503).json({ error: "live-not-configured" });
-    return;
+    return res.status(503).json({ error: "live-not-configured" });
   }
 
-  const whipBase = getWhipBase();
   const room = req.params.room;
+  const account = (req as any).account as Account;
 
   if (!isLiveEnabledRoom(room)) {
     return res.status(403).json({ error: "live-disabled" });
   }
 
-  const stream = buildStreamName(room);
+  const state = liveStateRepo.get(room); // { publisherId, audioOnly, ... } 想定
 
-  const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}`;
+  const whipBase = getWhipBase();
+  const stream = buildStreamName(room);
   const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}`;
 
+  // ロックなし：配信開始手続きが踏まれていない
+  if (!state.publisherId) {
+    return res.status(409).json({ error: "no-live-lock" });
+  }
+
+  // 自分が publisher の場合だけ WHIP を返す
+  if (state.publisherId === account.id) {
+    const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}`;
+    return res.json({
+      role: "publisher",
+      whipUrl,
+      whepUrl,
+    });
+  }
+
+  // 他人が配信中：視聴者として WHEP のみ
   return res.json({
-    whipUrl,
+    role: "viewer",
     whepUrl,
   });
 });
