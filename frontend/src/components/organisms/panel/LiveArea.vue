@@ -122,6 +122,81 @@ const isMyLive = computed(
   () => isLive.value && publisherId.value != null && publisherId.value === myId.value,
 );
 
+// =====================
+// favicon 差し替え（配信者のみ）
+// =====================
+type FaviconBackup = { el: HTMLLinkElement; href: string | null };
+
+const faviconBackup = ref<FaviconBackup[] | null>(null);
+const createdFaviconEl = ref<HTMLLinkElement | null>(null);
+
+// 配信者時に使う favicon（public に置いたやつ）
+const LIVE_FAVICON_HREF = "/favicon_live.png";
+
+const captureFavicons = (): void => {
+  if (typeof document === "undefined") return;
+  if (faviconBackup.value) return; // 既に退避済み
+
+  const els = Array.from(
+    document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"], link[rel="shortcut icon"]'),
+  );
+
+  // 何も無い場合は 1 つ作って差し替え対象にする
+  if (els.length === 0) {
+    const link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+    createdFaviconEl.value = link;
+    faviconBackup.value = [{ el: link, href: null }];
+    return;
+  }
+
+  faviconBackup.value = els.map((el) => ({ el, href: el.getAttribute("href") }));
+};
+
+const setFavicon = (href: string): void => {
+  if (typeof document === "undefined") return;
+  captureFavicons();
+  if (!faviconBackup.value) return;
+
+  for (const { el } of faviconBackup.value) {
+    el.setAttribute("href", href);
+  }
+};
+
+const restoreFavicon = (): void => {
+  if (typeof document === "undefined") return;
+  if (!faviconBackup.value) return;
+
+  for (const { el, href } of faviconBackup.value) {
+    if (href == null) el.removeAttribute("href");
+    else el.setAttribute("href", href);
+  }
+
+  // 自分で作った要素は消して元に戻す
+  if (createdFaviconEl.value) {
+    createdFaviconEl.value.remove();
+    createdFaviconEl.value = null;
+  }
+
+  faviconBackup.value = null;
+};
+
+// 配信者のときだけ差し替え
+watch(
+  isMyLive,
+  (nowPublisher) => {
+    if (nowPublisher) setFavicon(LIVE_FAVICON_HREF);
+    else restoreFavicon();
+  },
+  { immediate: true },
+);
+
+// 画面を離れるときも必ず戻す
+onBeforeUnmount(() => {
+  restoreFavicon();
+});
+
 // ボタン有効条件
 
 const canStartPublish = computed(() => {
