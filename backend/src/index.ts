@@ -206,14 +206,7 @@ const ioServer: Server = new Server(server, {
 const logger: Logger = Log4js.getLogger();
 logger.level = "debug";
 
-app.use(
-  cors({
-    origin: process.env.FRONTEND_HOST,
-    credentials: true,
-    methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-Monachat-Token", "Authorization"],
-  })
-);
+app.use(cors());
 app.options("*", cors());
 
 app.use(express.json());
