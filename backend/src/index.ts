@@ -160,6 +160,40 @@ function checkWhipToken(
   };
 }
 
+function requireInternalSecret(req: Request, res: Response): boolean {
+  const expected = process.env.INTERNAL_AUTH_SECRET ?? "";
+  // 未設定は「バグ」扱いにするなら 503 推奨
+  if (expected.length < 32) {
+    logger.error("INTERNAL_AUTH_SECRET is not configured");
+    res.status(503).end();
+    return false;
+  }
+
+  const got = req.header("x-internal-secret") ?? "";
+  if (got.length !== expected.length) {
+    res.status(403).end();
+    return false;
+  }
+
+  // timing safe compare
+  const aBuf = Buffer.from(got);
+  const bBuf = Buffer.from(expected);
+
+  if (aBuf.length !== bBuf.length) {
+    res.status(403).end();
+    return false;
+  }
+
+  const aView = new Uint8Array(aBuf.buffer, aBuf.byteOffset, aBuf.byteLength);
+  const bView = new Uint8Array(bBuf.buffer, bBuf.byteOffset, bBuf.byteLength);
+
+  if (!crypto.timingSafeEqual(aView, bView)) {
+    res.status(403).end();
+    return false;
+  }
+  return true;
+}
+
 const ioServer: Server = new Server(server, {
   path: "/monachatchat/",
   cors: {
@@ -172,8 +206,17 @@ const ioServer: Server = new Server(server, {
 const logger: Logger = Log4js.getLogger();
 logger.level = "debug";
 
+app.use(
+  cors({
+    origin: process.env.FRONTEND_HOST,
+    credentials: true,
+    methods: ["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-Monachat-Token", "Authorization"],
+  })
+);
+app.options("*", cors());
+
 app.use(express.json());
-app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "/dist")));
 app.get("/api/rooms", (_: Request, res: Response) => {
@@ -327,7 +370,7 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}`;
 
   const now = Math.floor(Date.now() / 1000);
-  const expiresAt = now + 60; // 有効期限 60秒くらいから
+  const expiresAt = now + 300;
 
   const token = signStreamKey(state.streamKey, expiresAt);
 
@@ -381,6 +424,7 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
 });
 
 app.get("/internal/live/whip-auth", (req, res) => {
+  if (!requireInternalSecret(req, res)) return;
   const originalUri = req.header("X-Original-URI") ?? "";
   const url = new URL(originalUri, "https://dummy");
 
@@ -395,21 +439,8 @@ app.get("/internal/live/whip-auth", (req, res) => {
         ? 400
         : 403;
 
-    logger.warn("whip-auth: denied", {
-      reason: result.reason,
-      stream,
-      ip: req.ip,
-    });
-
     return res.status(status).end();
   }
-
-  logger.info("whip-auth: ok", {
-    stream,
-    roomId: result.roomId,
-    publisherId: result.publisherId,
-    ip: req.ip,
-  });
 
   return res.status(200).end();
 });
