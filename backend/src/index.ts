@@ -19,6 +19,13 @@ import { LiveStateRepository } from "./infrastructure/liveState";
 import { isLiveConfigured, getWhipBase } from "./config/liveConfig";
 import * as crypto from "crypto";
 
+const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
+const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
+
+const isWhipTokenSecretValid =
+  typeof RAW_WHIP_TOKEN_SECRET === "string" &&
+  RAW_WHIP_TOKEN_SECRET.length >= WHIP_TOKEN_SECRET_MIN_LENGTH;
+
 const app: Application = express();
 const server: http.Server = http.createServer(app);
 const liveStateRepo = LiveStateRepository.getInstance();
@@ -52,13 +59,105 @@ function isLiveEnabledRoom(roomId: string): boolean {
 }
 
 function signStreamKey(streamKey: string, expiresAt: number): string {
-  const secret = process.env.WHIP_TOKEN_SECRET ?? "change-me";
+  if (!isWhipTokenSecretValid) {
+    // ここに来るのは「バグ」なので落としてよい（配信系はそもそも 503 にしている前提）
+    throw new Error("WHIP_TOKEN_SECRET is not configured correctly");
+  }
+
   const payload = `${streamKey}:${expiresAt}`;
   const hmac = crypto
-    .createHmac("sha256", secret)
+    .createHmac("sha256", RAW_WHIP_TOKEN_SECRET)
     .update(payload)
     .digest("base64url");
+
   return `${hmac}.${expiresAt}`; // "署名.期限" 形式
+}
+
+type WhipTokenCheckResult =
+  | {
+      ok: true;
+      roomId: string;
+      publisherId: string;
+      reason: null;
+    }
+  | {
+      ok: false;
+      reason:
+        | "missing-params"
+        | "bad-format"
+        | "expired"
+        | "invalid-signature"
+        | "unknown-streamKey";
+    };
+
+function checkWhipToken(
+  streamParam: string | null,
+  tokenParam: string | null
+): WhipTokenCheckResult {
+  if (!streamParam || !tokenParam) {
+    return { ok: false, reason: "missing-params" };
+  }
+
+  // ★ secret が不正なら常に拒否
+  if (!isWhipTokenSecretValid) {
+    return { ok: false, reason: "invalid-signature" };
+  }
+
+  const [hmac, expStr] = tokenParam.split(".");
+  const exp = Number(expStr);
+  if (!hmac || !exp || Number.isNaN(exp)) {
+    return { ok: false, reason: "bad-format" };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (exp < now) {
+    return { ok: false, reason: "expired" };
+  }
+
+  // ★ ここで RAW_WHIP_TOKEN_SECRET を使う
+  const payload = `${streamParam}:${exp}`;
+  const expected = crypto
+    .createHmac("sha256", RAW_WHIP_TOKEN_SECRET)
+    .update(payload)
+    .digest("base64url");
+
+  const hmacBuf = Buffer.from(hmac, "base64url");
+  const expectedBuf = Buffer.from(expected, "base64url");
+
+  if (hmacBuf.length !== expectedBuf.length) {
+    return { ok: false, reason: "invalid-signature" };
+  }
+
+  try {
+    const hmacView = new Uint8Array(
+      hmacBuf.buffer,
+      hmacBuf.byteOffset,
+      hmacBuf.byteLength
+    );
+    const expectedView = new Uint8Array(
+      expectedBuf.buffer,
+      expectedBuf.byteOffset,
+      expectedBuf.byteLength
+    );
+
+    if (!crypto.timingSafeEqual(hmacView, expectedView)) {
+      return { ok: false, reason: "invalid-signature" };
+    }
+  } catch {
+    return { ok: false, reason: "invalid-signature" };
+  }
+
+  const found = liveStateRepo.findByStreamKey(streamParam);
+  if (!found || !found.state.publisherId) {
+    return { ok: false, reason: "unknown-streamKey" };
+  }
+
+  return {
+    ok: true,
+    roomId: found.roomId,
+    publisherId: found.state.publisherId,
+    reason: null,
+  };
 }
 
 const ioServer: Server = new Server(server, {
@@ -136,7 +235,7 @@ app.get("/api/news", (_: Request, res: Response) => {
 });
 
 app.get("/api/live/:room/status", liveAuth, (req, res) => {
-  if (!isLiveConfigured) {
+  if (!isLiveConfigured || !isWhipTokenSecretValid) {
     res.status(503).json({ error: "live-not-configured" });
     return;
   }
@@ -165,7 +264,7 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
 });
 
 app.post("/api/live/:room/start", liveAuth, (req, res) => {
-  if (!isLiveConfigured) {
+  if (!isLiveConfigured || !isWhipTokenSecretValid) {
     res.status(503).json({ error: "live-not-configured" });
     return;
   }
@@ -206,7 +305,7 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
   return res.json({ ok: true });
 });
 app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
-  if (!isLiveConfigured) {
+  if (!isLiveConfigured || !isWhipTokenSecretValid) {
     return res.status(503).json({ error: "live-not-configured" });
   }
 
@@ -251,7 +350,7 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
 });
 
 app.post("/api/live/:room/stop", liveAuth, (req, res) => {
-  if (!isLiveConfigured) {
+  if (!isLiveConfigured || !isWhipTokenSecretValid) {
     res.status(503).json({ error: "live-not-configured" });
     return;
   }
@@ -288,70 +387,29 @@ app.get("/internal/live/whip-auth", (req, res) => {
   const stream = url.searchParams.get("stream");
   const token = url.searchParams.get("token");
 
-  if (!stream || !token) {
-    return res.status(400).end();
-  }
+  const result = checkWhipToken(stream, token);
 
-  const [hmac, expStr] = token.split(".");
-  const exp = Number(expStr);
-  if (!hmac || !exp || Number.isNaN(exp)) {
-    return res.status(400).end();
-  }
+  if (!result.ok) {
+    const status =
+      result.reason === "missing-params" || result.reason === "bad-format"
+        ? 400
+        : 403;
 
-  const now = Math.floor(Date.now() / 1000);
-  if (exp < now) {
-    logger.warn("whip-auth: expired token", { stream, exp, ip: req.ip });
-    return res.status(403).end();
-  }
-
-  const secret = process.env.WHIP_TOKEN_SECRET ?? "change-me";
-  const payload = `${stream}:${exp}`;
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(payload)
-    .digest("base64url");
-
-  const hmacBuf = Buffer.from(hmac, "base64url");
-  const expectedBuf = Buffer.from(expected, "base64url");
-
-  if (hmacBuf.length !== expectedBuf.length) {
-    logger.warn("whip-auth: invalid signature (len mismatch)", {
+    logger.warn("whip-auth: denied", {
+      reason: result.reason,
       stream,
       ip: req.ip,
     });
-    return res.status(403).end();
+
+    return res.status(status).end();
   }
 
-  try {
-    const hmacView = new Uint8Array(
-      hmacBuf.buffer,
-      hmacBuf.byteOffset,
-      hmacBuf.byteLength
-    );
-    const expectedView = new Uint8Array(
-      expectedBuf.buffer,
-      expectedBuf.byteOffset,
-      expectedBuf.byteLength
-    );
-
-    if (!crypto.timingSafeEqual(hmacView, expectedView)) {
-      logger.warn("whip-auth: invalid signature", { stream, ip: req.ip });
-      return res.status(403).end();
-    }
-  } catch (e) {
-    logger.warn("whip-auth: timingSafeEqual threw", { stream, ip: req.ip, e });
-    return res.status(403).end();
-  }
-
-  // ★ ここで liveStateRepo を見る
-  const found = liveStateRepo.findByStreamKey(stream);
-  if (!found || !found.state.publisherId) {
-    logger.warn("whip-auth: unknown or inactive streamKey", {
-      stream,
-      ip: req.ip,
-    });
-    return res.status(403).end();
-  }
+  logger.info("whip-auth: ok", {
+    stream,
+    roomId: result.roomId,
+    publisherId: result.publisherId,
+    ip: req.ip,
+  });
 
   return res.status(200).end();
 });
