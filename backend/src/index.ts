@@ -17,6 +17,7 @@ import { liveAuth } from "./middleware/liveAuth";
 import { Account } from "./entity/account";
 import { LiveStateRepository } from "./infrastructure/liveState";
 import { isLiveConfigured, getWhipBase } from "./config/liveConfig";
+import * as crypto from "crypto";
 
 const app: Application = express();
 const server: http.Server = http.createServer(app);
@@ -48,6 +49,16 @@ function isLiveEnabledRoom(roomId: string): boolean {
     // 何かおかしかったら配信禁止にしておく
     return false;
   }
+}
+
+function signStreamKey(streamKey: string, expiresAt: number): string {
+  const secret = process.env.WHIP_TOKEN_SECRET ?? "change-me";
+  const payload = `${streamKey}:${expiresAt}`;
+  const hmac = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
+  return `${hmac}.${expiresAt}`; // "署名.期限" 形式
 }
 
 const ioServer: Server = new Server(server, {
@@ -176,7 +187,13 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
   // ★ ここで配信モードを受け取る（デフォルト false = 映像＋音声）
   const audioOnly = !!req.body?.audioOnly;
 
-  liveStateRepo.set(room, account.id, audioOnly);
+  // ★ 同じアカウントが再度 /start したときは既存の streamKey を再利用
+  const streamKey =
+    isSameAccount && state.streamKey
+      ? state.streamKey
+      : crypto.randomBytes(16).toString("hex"); // 32文字hex
+
+  liveStateRepo.set(room, account.id, audioOnly, streamKey);
 
   ioServer.to(room).emit("live_status_change", {
     room,
@@ -202,18 +219,23 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
 
   const state = liveStateRepo.get(room); // { publisherId, audioOnly, ... } 想定
 
-  const whipBase = getWhipBase();
-  const stream = buildStreamName(room);
-  const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}`;
-
   // ロックなし：配信開始手続きが踏まれていない
-  if (!state.publisherId) {
+  if (!state.publisherId || !state.streamKey) {
     return res.status(409).json({ error: "no-live-lock" });
   }
+  const whipBase = getWhipBase();
+  const stream = encodeURIComponent(state.streamKey);
+  const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}`;
 
-  // 自分が publisher の場合だけ WHIP を返す
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + 60; // 有効期限 60秒くらいから
+
+  const token = signStreamKey(state.streamKey, expiresAt);
+
   if (state.publisherId === account.id) {
-    const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}`;
+    const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}&token=${encodeURIComponent(
+      token
+    )}`;
     return res.json({
       role: "publisher",
       whipUrl,
@@ -259,10 +281,80 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
-function buildStreamName(roomId: string): string {
-  const withoutSlash = roomId.replace(/^\//, "");
-  return encodeURIComponent(withoutSlash);
-}
+app.get("/internal/live/whip-auth", (req, res) => {
+  const originalUri = req.header("X-Original-URI") ?? "";
+  const url = new URL(originalUri, "https://dummy");
+
+  const stream = url.searchParams.get("stream");
+  const token = url.searchParams.get("token");
+
+  if (!stream || !token) {
+    return res.status(400).end();
+  }
+
+  const [hmac, expStr] = token.split(".");
+  const exp = Number(expStr);
+  if (!hmac || !exp || Number.isNaN(exp)) {
+    return res.status(400).end();
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (exp < now) {
+    logger.warn("whip-auth: expired token", { stream, exp, ip: req.ip });
+    return res.status(403).end();
+  }
+
+  const secret = process.env.WHIP_TOKEN_SECRET ?? "change-me";
+  const payload = `${stream}:${exp}`;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
+
+  const hmacBuf = Buffer.from(hmac, "base64url");
+  const expectedBuf = Buffer.from(expected, "base64url");
+
+  if (hmacBuf.length !== expectedBuf.length) {
+    logger.warn("whip-auth: invalid signature (len mismatch)", {
+      stream,
+      ip: req.ip,
+    });
+    return res.status(403).end();
+  }
+
+  try {
+    const hmacView = new Uint8Array(
+      hmacBuf.buffer,
+      hmacBuf.byteOffset,
+      hmacBuf.byteLength
+    );
+    const expectedView = new Uint8Array(
+      expectedBuf.buffer,
+      expectedBuf.byteOffset,
+      expectedBuf.byteLength
+    );
+
+    if (!crypto.timingSafeEqual(hmacView, expectedView)) {
+      logger.warn("whip-auth: invalid signature", { stream, ip: req.ip });
+      return res.status(403).end();
+    }
+  } catch (e) {
+    logger.warn("whip-auth: timingSafeEqual threw", { stream, ip: req.ip, e });
+    return res.status(403).end();
+  }
+
+  // ★ ここで liveStateRepo を見る
+  const found = liveStateRepo.findByStreamKey(stream);
+  if (!found || !found.state.publisherId) {
+    logger.warn("whip-auth: unknown or inactive streamKey", {
+      stream,
+      ip: req.ip,
+    });
+    return res.status(403).end();
+  }
+
+  return res.status(200).end();
+});
 
 // サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
 ioServer.disconnectSockets();
