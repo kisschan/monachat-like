@@ -192,11 +192,6 @@ watch(
   { immediate: true },
 );
 
-// 画面を離れるときも必ず戻す
-onBeforeUnmount(() => {
-  restoreFavicon();
-});
-
 // ボタン有効条件
 
 const canStartPublish = computed(() => {
@@ -487,7 +482,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   socketIOInstance.off("live_status_change", handleLiveStatusChange);
-
+  restoreFavicon();
   if (publishHandle.value) {
     publishHandle.value.stop().catch(() => {});
     publishHandle.value = null;
