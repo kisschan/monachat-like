@@ -418,6 +418,7 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
 
 app.get("/internal/live/whip-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
+
   const originalUri = req.header("X-Original-URI") ?? "";
   const url = new URL(originalUri, "https://dummy");
 
@@ -427,12 +428,11 @@ app.get("/internal/live/whip-auth", (req, res) => {
   const result = checkWhipToken(stream, token);
 
   if (!result.ok) {
-    const status =
-      result.reason === "missing-params" || result.reason === "bad-format"
-        ? 400
-        : 403;
+    // デバッグ用（後で消してOK）
+    res.setHeader("X-Auth-Reason", result.reason);
 
-    return res.status(status).end();
+    // ★auth_request 的には 400 を返さない。全部 403 に寄せる
+    return res.status(403).end();
   }
 
   return res.status(200).end();
