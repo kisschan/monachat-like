@@ -416,7 +416,7 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
-app.get("/internal/live/whip-auth", (req, res) => {
+app.all("/internal/live/whip-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
 
   const originalUri = req.header("X-Original-URI") ?? "";
