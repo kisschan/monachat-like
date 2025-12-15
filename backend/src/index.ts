@@ -162,10 +162,10 @@ function checkWhipToken(
 
 function requireInternalSecret(req: Request, res: Response): boolean {
   const expected = process.env.INTERNAL_AUTH_SECRET ?? "";
-  // 未設定は「バグ」扱いにするなら 503 推奨
   if (expected.length < 32) {
     logger.error("INTERNAL_AUTH_SECRET is not configured");
-    res.status(503).end();
+    res.setHeader("X-Auth-Reason", "internal-secret-misconfigured");
+    res.status(403).end(); // 503 ではなく 403 に寄せる
     return false;
   }
 
@@ -420,7 +420,14 @@ app.all("/internal/live/whip-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
 
   const originalUri = req.header("X-Original-URI") ?? "";
-  const url = new URL(originalUri, "https://dummy");
+
+  let url: URL;
+  try {
+    url = new URL(originalUri, "https://dummy");
+  } catch (e) {
+    res.setHeader("X-Auth-Reason", "malformed-original-uri");
+    return res.status(403).end();
+  }
 
   const stream = url.searchParams.get("stream");
   const token = url.searchParams.get("token");
@@ -428,10 +435,7 @@ app.all("/internal/live/whip-auth", (req, res) => {
   const result = checkWhipToken(stream, token);
 
   if (!result.ok) {
-    // デバッグ用（後で消してOK）
     res.setHeader("X-Auth-Reason", result.reason);
-
-    // ★auth_request 的には 400 を返さない。全部 403 に寄せる
     return res.status(403).end();
   }
 
