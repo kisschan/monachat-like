@@ -1,11 +1,5 @@
 import { waitForIceGatheringComplete } from "./ice";
-
-const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
-
-const toOptionalNonEmpty = (s: string): string | undefined => {
-  const t = s.trim();
-  return t.length > 0 ? t : undefined;
-};
+import { requireCreatedSdpWithLocation } from "./webRTChelper";
 
 export type WhepSubscribeHandle = {
   stop: () => Promise<void>;
@@ -80,7 +74,6 @@ export async function startWhepSubscribe(
     await pc.setLocalDescription(offer);
     await waitForIceGatheringComplete(pc, 3000);
 
-    // 以降は共通：WHEP に SDP を投げる
     const res = await fetch(whepUrl, {
       method: "POST",
       headers: {
@@ -90,24 +83,15 @@ export async function startWhepSubscribe(
       body: pc.localDescription?.sdp ?? offer.sdp ?? "",
     });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error(audioOnly ? "WHEP error (audioOnly)" : "WHEP error", res.status, text);
-      throw new WhepRequestError(res.status, toOptionalNonEmpty(text));
-    }
-
-    const answerSdp = await res.text();
-    await pc.setRemoteDescription(
-      new RTCSessionDescription({
-        type: "answer",
-        sdp: answerSdp,
-      }),
+    const { resourceUrl: createdResourceUrl, answerSdp } = await requireCreatedSdpWithLocation(
+      res,
+      whepUrl,
+      "whep",
     );
 
-    const locationHeader = res.headers.get("Location");
-    resourceUrl = isNonEmptyString(locationHeader)
-      ? new URL(locationHeader, whepUrl).toString()
-      : whepUrl;
+    resourceUrl = createdResourceUrl;
+
+    await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: answerSdp }));
 
     return { stop };
   } catch (e) {

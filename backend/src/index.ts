@@ -18,6 +18,12 @@ import { Account } from "./entity/account";
 import { LiveStateRepository } from "./infrastructure/liveState";
 import { isLiveConfigured, getWhipBase } from "./config/liveConfig";
 import * as crypto from "crypto";
+import {
+  signStreamTokenV1,
+  verifyStreamTokenV1,
+  type StreamTokenScope,
+} from "./live/streamTokenV1";
+import { TokenVerifyResult } from "./live/streamTokenV1";
 
 const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
 const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
@@ -56,26 +62,6 @@ function isLiveEnabledRoom(roomId: string): boolean {
     // 何かおかしかったら配信禁止にしておく
     return false;
   }
-}
-type StreamTokenScope = "whip" | "whep";
-
-function signStreamToken(
-  streamKey: string,
-  expiresAt: number,
-  scope: StreamTokenScope
-): string {
-  if (!isWhipTokenSecretValid) {
-    // ここに来るのは「バグ」なので落としてよい（配信系はそもそも 503 にしている前提）
-    throw new Error("WHIP_TOKEN_SECRET is not configured correctly");
-  }
-
-  const payload = `${streamKey}:${expiresAt}`;
-  const hmac = crypto
-    .createHmac("sha256", RAW_WHIP_TOKEN_SECRET)
-    .update(payload)
-    .digest("base64url");
-
-  return `${scope}:${hmac}.${expiresAt}`; // "署名.期限" 形式
 }
 
 type StreamTokenCheckResult =
@@ -117,54 +103,21 @@ function checkStreamToken(
   if (!streamParam || !tokenParam || !scope) {
     return { ok: false, reason: "missing-params" };
   }
-  // ★ secret が不正なら常に拒否
   if (!isWhipTokenSecretValid) {
     return { ok: false, reason: "invalid-signature" };
   }
 
-  const [hmac, expStr] = tokenParam.split(".");
-  const exp = Number(expStr);
-  if (!hmac || !exp || Number.isNaN(exp)) {
-    return { ok: false, reason: "bad-format" };
-  }
-
   const now = Math.floor(Date.now() / 1000);
-  if (exp < now) {
-    return { ok: false, reason: "expired" };
-  }
 
-  // ★ ここで RAW_WHIP_TOKEN_SECRET を使う
-  const payload = `${streamParam}:${exp}`;
-  const expected = crypto
-    .createHmac("sha256", RAW_WHIP_TOKEN_SECRET)
-    .update(payload)
-    .digest("base64url");
+  const v = verifyStreamTokenV1({
+    secret: RAW_WHIP_TOKEN_SECRET,
+    streamParam,
+    tokenParam,
+    scope,
+    nowSec: now,
+  });
 
-  const hmacBuf = Buffer.from(hmac, "base64url");
-  const expectedBuf = Buffer.from(expected, "base64url");
-
-  if (hmacBuf.length !== expectedBuf.length) {
-    return { ok: false, reason: "invalid-signature" };
-  }
-
-  try {
-    const hmacView = new Uint8Array(
-      hmacBuf.buffer,
-      hmacBuf.byteOffset,
-      hmacBuf.byteLength
-    );
-    const expectedView = new Uint8Array(
-      expectedBuf.buffer,
-      expectedBuf.byteOffset,
-      expectedBuf.byteLength
-    );
-
-    if (!crypto.timingSafeEqual(hmacView, expectedView)) {
-      return { ok: false, reason: "invalid-signature" };
-    }
-  } catch {
-    return { ok: false, reason: "invalid-signature" };
-  }
+  if (!v.ok) return { ok: false, reason: v.reason };
 
   const found = liveStateRepo.findByStreamKey(streamParam);
   if (!found || !found.state.publisherId) {
@@ -383,8 +336,18 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + 300;
 
-  const whipToken = signStreamToken(state.streamKey, expiresAt, "whip");
-  const whepToken = signStreamToken(state.streamKey, expiresAt, "whep");
+  const whipToken = signStreamTokenV1({
+    secret: RAW_WHIP_TOKEN_SECRET,
+    streamKey: state.streamKey,
+    expiresAt,
+    scope: "whip",
+  });
+  const whepToken = signStreamTokenV1({
+    secret: RAW_WHIP_TOKEN_SECRET,
+    streamKey: state.streamKey,
+    expiresAt,
+    scope: "whep",
+  });
 
   const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}&token=${encodeURIComponent(
     whepToken
