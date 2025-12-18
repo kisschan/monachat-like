@@ -57,8 +57,13 @@ function isLiveEnabledRoom(roomId: string): boolean {
     return false;
   }
 }
+type StreamTokenScope = "whip" | "whep";
 
-function signStreamKey(streamKey: string, expiresAt: number): string {
+function signStreamToken(
+  streamKey: string,
+  expiresAt: number,
+  scope: StreamTokenScope
+): string {
   if (!isWhipTokenSecretValid) {
     // ここに来るのは「バグ」なので落としてよい（配信系はそもそも 503 にしている前提）
     throw new Error("WHIP_TOKEN_SECRET is not configured correctly");
@@ -70,10 +75,10 @@ function signStreamKey(streamKey: string, expiresAt: number): string {
     .update(payload)
     .digest("base64url");
 
-  return `${hmac}.${expiresAt}`; // "署名.期限" 形式
+  return `${scope}:${hmac}.${expiresAt}`; // "署名.期限" 形式
 }
 
-type WhipTokenCheckResult =
+type StreamTokenCheckResult =
   | {
       ok: true;
       roomId: string;
@@ -93,11 +98,25 @@ type WhipTokenCheckResult =
 function checkWhipToken(
   streamParam: string | null,
   tokenParam: string | null
-): WhipTokenCheckResult {
-  if (!streamParam || !tokenParam) {
+): StreamTokenCheckResult {
+  return checkStreamToken(streamParam, tokenParam, "whip");
+}
+
+function checkWhepToken(
+  streamParam: string | null,
+  tokenParam: string | null
+): StreamTokenCheckResult {
+  return checkStreamToken(streamParam, tokenParam, "whep");
+}
+
+function checkStreamToken(
+  streamParam: string | null,
+  tokenParam: string | null,
+  scope: StreamTokenScope
+): StreamTokenCheckResult {
+  if (!streamParam || !tokenParam || !scope) {
     return { ok: false, reason: "missing-params" };
   }
-
   // ★ secret が不正なら常に拒否
   if (!isWhipTokenSecretValid) {
     return { ok: false, reason: "invalid-signature" };
@@ -360,21 +379,26 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   }
   const whipBase = getWhipBase();
   const stream = encodeURIComponent(state.streamKey);
-  const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}`;
 
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + 300;
 
-  const token = signStreamKey(state.streamKey, expiresAt);
+  const whipToken = signStreamToken(state.streamKey, expiresAt, "whip");
+  const whepToken = signStreamToken(state.streamKey, expiresAt, "whep");
+
+  const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}&token=${encodeURIComponent(
+    whepToken
+  )}`;
 
   if (state.publisherId === account.id) {
     const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}&token=${encodeURIComponent(
-      token
+      whipToken
     )}`;
     return res.json({
       role: "publisher",
       whipUrl,
       whepUrl,
+      expiresAt,
     });
   }
 
@@ -382,6 +406,7 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   return res.json({
     role: "viewer",
     whepUrl,
+    expiresAt,
   });
 });
 
@@ -433,6 +458,32 @@ app.all("/internal/live/whip-auth", (req, res) => {
   const token = url.searchParams.get("token");
 
   const result = checkWhipToken(stream, token);
+
+  if (!result.ok) {
+    res.setHeader("X-Auth-Reason", result.reason);
+    return res.status(403).end();
+  }
+
+  return res.status(200).end();
+});
+
+app.all("/internal/live/whep-auth", (req, res) => {
+  if (!requireInternalSecret(req, res)) return;
+
+  const originalUri = req.header("X-Original-URI") ?? "";
+
+  let url: URL;
+  try {
+    url = new URL(originalUri, "https://dummy");
+  } catch (e) {
+    res.setHeader("X-Auth-Reason", "malformed-original-uri");
+    return res.status(403).end();
+  }
+
+  const stream = url.searchParams.get("stream");
+  const token = url.searchParams.get("token");
+
+  const result = checkWhepToken(stream, token);
 
   if (!result.ok) {
     res.setHeader("X-Auth-Reason", result.reason);

@@ -106,6 +106,8 @@ export type LiveStatusChangePayload = {
   audioOnly: boolean;
 };
 export type WebrtcConfigResponse = {
-  whipUrl: string;
+  role: "publisher" | "viewer";
+  whipUrl?: string;
   whepUrl: string;
+  expiresAt?: number;
 };

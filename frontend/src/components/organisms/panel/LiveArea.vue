@@ -246,9 +246,12 @@ const onClickStartPublish = async () => {
     needsRollback = true;
 
     // 2. WHIP 用設定を取得
-    const { whipUrl } = await fetchWebrtcConfig(roomId.value, token.value);
+    const config = await fetchWebrtcConfig(roomId.value, token.value);
+    if (!config.whipUrl) {
+      throw new Error("whip-url-missing");
+    }
 
-    const handle = await startWhipPublish(whipUrl, {
+    const handle = await startWhipPublish(config.whipUrl, {
       audioOnly: isPublishAudioOnly.value,
     });
     publishHandle.value = handle;
@@ -344,9 +347,12 @@ const onClickStartWatch = async () => {
   isBusyWatch.value = true;
 
   try {
-    const { whepUrl } = await fetchWebrtcConfig(roomId.value, token.value);
+    const config = await fetchWebrtcConfig(roomId.value, token.value);
+    if (!config.whepUrl) {
+      throw new Error("whep-url-missing");
+    }
 
-    subscribeHandle.value = await startWhepSubscribe(whepUrl, videoRef.value, {
+    subscribeHandle.value = await startWhepSubscribe(config.whepUrl, videoRef.value, {
       audioOnly: isWatchAudioOnly.value,
     });
   } catch (e: unknown) {
@@ -362,17 +368,21 @@ const onClickStartWatch = async () => {
         errorMessage.value = "視聴開始に失敗しました。";
       }
     } else if (e instanceof WhepRequestError) {
+      const detail = e.body ? `（${e.body.slice(0, 180)}）` : "";
       if (e.status === 404 || e.status === 410) {
         errorMessage.value = "配信が終了しています。ページを再読み込みしてください。";
+      } else if (e.status === 403) {
+        errorMessage.value = `視聴の認可に失敗しました。もう一度お試しください。${detail}`;
+      } else if (e.status === 401) {
+        errorMessage.value = "視聴権限がありません。ページを再読み込みしてください。";
       } else if (e.status === 400) {
         errorMessage.value = "視聴開始に失敗しました。（接続に問題があります）";
       } else {
-        errorMessage.value = "視聴開始に失敗しました。";
+        errorMessage.value = `視聴開始に失敗しました。(status=${e.status})${detail}`;
       }
     } else {
       errorMessage.value = "視聴開始に失敗しました。";
     }
-    console.error(e);
   } finally {
     isBusyWatch.value = false;
   }

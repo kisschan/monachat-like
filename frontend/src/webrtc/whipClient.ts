@@ -1,3 +1,12 @@
+import { waitForIceGatheringComplete } from "./ice";
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+
+const toOptionalNonEmpty = (s: string): string | undefined => {
+  const t = s.trim();
+  return t.length > 0 ? t : undefined;
+};
+
 export type WhipPublishHandle = {
   stop: () => Promise<void>;
 };
@@ -5,6 +14,17 @@ export type WhipPublishHandle = {
 export type WhipPublishOptions = {
   audioOnly?: boolean;
 };
+
+class WhipRequestError extends Error {
+  status: number;
+  body?: string;
+
+  constructor(status: number, body?: string) {
+    super(`WHIP POST failed: status=${status}${body != null ? ` body=${body}` : ""}`);
+    this.status = status;
+    this.body = body;
+  }
+}
 
 export class MediaAcquireError extends Error {
   code: "permission-denied" | "no-device" | "constraint-failed" | "unknown";
@@ -53,6 +73,8 @@ export async function startWhipPublish(
 
   let localStream: MediaStream | null = null;
   let pc: RTCPeerConnection | null = null;
+  let stopped = false;
+  let resourceUrl: string | null = null;
 
   try {
     // 1. メディア取得
@@ -72,6 +94,7 @@ export async function startWhipPublish(
       offerToReceiveVideo: false,
     });
     await pc.setLocalDescription(offer);
+    await waitForIceGatheringComplete(pc, 3000);
 
     // 3. WHIP エンドポイントに SDP を送信
     const res = await fetch(whipUrl, {
@@ -79,11 +102,12 @@ export async function startWhipPublish(
       headers: {
         "Content-Type": "application/sdp",
       },
-      body: offer.sdp ?? "",
+      body: pc.localDescription?.sdp ?? offer.sdp ?? "",
     });
 
     if (!res.ok) {
-      throw new Error(`WHIP POST failed: status=${res.status}`);
+      const bodyText = await res.text().catch(() => "");
+      throw new WhipRequestError(res.status, toOptionalNonEmpty(bodyText));
     }
 
     const answerSdp = await res.text();
@@ -94,12 +118,18 @@ export async function startWhipPublish(
       }),
     );
 
-    const resourceUrl = res.headers.get("Location") ?? whipUrl;
+    const locationHeader = res.headers.get("Location");
+    resourceUrl = isNonEmptyString(locationHeader)
+      ? new URL(locationHeader, whipUrl).toString()
+      : whipUrl;
 
     const stop = async () => {
+      if (stopped) return;
+      stopped = true;
       try {
-        // WHIP セッション削除
-        await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
+        if (resourceUrl !== null && resourceUrl !== "") {
+          await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
+        }
       } finally {
         pc?.close();
         localStream?.getTracks().forEach((t) => t.stop());
@@ -108,6 +138,9 @@ export async function startWhipPublish(
 
     return { stop };
   } catch (e) {
+    if (!stopped && resourceUrl != null) {
+      await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
+    }
     pc?.close();
     localStream?.getTracks().forEach((t) => t.stop());
     throw e;

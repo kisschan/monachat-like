@@ -1,8 +1,10 @@
 import axios from "axios";
 
 export type WebrtcConfigResponse = {
-  whipUrl: string;
+  role: "publisher" | "viewer";
+  whipUrl?: string;
   whepUrl: string;
+  expiresAt?: number;
 };
 
 export async function fetchWebrtcConfig(

@@ -1,3 +1,12 @@
+import { waitForIceGatheringComplete } from "./ice";
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+
+const toOptionalNonEmpty = (s: string): string | undefined => {
+  const t = s.trim();
+  return t.length > 0 ? t : undefined;
+};
+
 export type WhepSubscribeHandle = {
   stop: () => Promise<void>;
 };
@@ -11,7 +20,7 @@ export class WhepRequestError extends Error {
   body?: string;
 
   constructor(status: number, body?: string) {
-    super(`WHEP POST failed: status=${status}`);
+    super(`WHEP POST failed: status=${status}${body != null ? ` body=${body}` : ""}`);
     this.status = status;
     this.body = body;
   }
@@ -19,82 +28,90 @@ export class WhepRequestError extends Error {
 
 export async function startWhepSubscribe(
   whepUrl: string,
-  videoEl: HTMLVideoElement,
+  mediaEl: HTMLMediaElement,
   options: WhepSubscribeOptions = {},
 ): Promise<WhepSubscribeHandle> {
   const pc = new RTCPeerConnection({ iceServers: [] });
 
   let remoteStream: MediaStream | null = null;
+  let stopped = false;
+  let resourceUrl: string | null = null;
+
+  const stop = async () => {
+    if (stopped) return;
+    stopped = true;
+    try {
+      if (resourceUrl !== null && resourceUrl !== "") {
+        await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
+      }
+    } finally {
+      pc.close();
+      if (remoteStream) {
+        remoteStream.getTracks().forEach((t) => t.stop());
+        remoteStream = null;
+      }
+
+      if (mediaEl.srcObject) {
+        mediaEl.srcObject = null;
+      }
+    }
+  };
 
   pc.ontrack = (event) => {
     const stream = event.streams[0] ?? null;
     if (!stream) return;
 
     remoteStream = stream;
-    videoEl.srcObject = remoteStream;
+    mediaEl.srcObject = remoteStream;
+    mediaEl.play().catch(() => {
+      // autoplay 失敗は UI 側で扱う前提
+    });
   };
 
-  const audioOnly = options.audioOnly === true;
+  try {
+    const audioOnly = options.audioOnly === true;
 
-  // ★ ここだけ audioOnly で分岐
-  if (audioOnly) {
-    // 音声のみ: audio の recvonly transceiver だけ
+    if (!audioOnly) {
+      pc.addTransceiver("video", { direction: "recvonly" });
+    }
     pc.addTransceiver("audio", { direction: "recvonly" });
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-  } else {
-    // 映像＋音声
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: true,
+    await waitForIceGatheringComplete(pc, 3000);
+
+    // 以降は共通：WHEP に SDP を投げる
+    const res = await fetch(whepUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/sdp",
+        Accept: "application/sdp",
+      },
+      body: pc.localDescription?.sdp ?? offer.sdp ?? "",
     });
-    await pc.setLocalDescription(offer);
-  }
 
-  // 以降は共通：WHEP に SDP を投げる
-  const res = await fetch(whepUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/sdp",
-      Accept: "application/sdp",
-    },
-    body: pc.localDescription?.sdp ?? "",
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error(audioOnly ? "WHEP error (audioOnly)" : "WHEP error", res.status, text);
-    throw new WhepRequestError(res.status, text);
-  }
-
-  const answerSdp = await res.text();
-  await pc.setRemoteDescription(
-    new RTCSessionDescription({
-      type: "answer",
-      sdp: answerSdp,
-    }),
-  );
-
-  // ★ Location ヘッダ（無ければ fallback として whepUrl 自体）
-  const resourceUrl = res.headers.get("Location") ?? whepUrl;
-
-  const stop = async () => {
-    try {
-      await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
-    } finally {
-      pc.close();
-
-      if (remoteStream) {
-        remoteStream.getTracks().forEach((t) => t.stop());
-        remoteStream = null;
-      }
-
-      if (videoEl.srcObject) {
-        videoEl.srcObject = null;
-      }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(audioOnly ? "WHEP error (audioOnly)" : "WHEP error", res.status, text);
+      throw new WhepRequestError(res.status, toOptionalNonEmpty(text));
     }
-  };
 
-  return { stop };
+    const answerSdp = await res.text();
+    await pc.setRemoteDescription(
+      new RTCSessionDescription({
+        type: "answer",
+        sdp: answerSdp,
+      }),
+    );
+
+    const locationHeader = res.headers.get("Location");
+    resourceUrl = isNonEmptyString(locationHeader)
+      ? new URL(locationHeader, whepUrl).toString()
+      : whepUrl;
+
+    return { stop };
+  } catch (e) {
+    await stop();
+    throw e;
+  }
 }

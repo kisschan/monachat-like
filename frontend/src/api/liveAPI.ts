@@ -42,8 +42,10 @@ export async function stopLive(roomId: string, token: string) {
 }
 
 export type WebRTCConfigResponse = {
-  whipUrl: string;
+  role: "publisher" | "viewer";
+  whipUrl?: string;
   whepUrl: string;
+  expiresAt?: number;
 };
 
 export async function fetchWebRTCConfig(
