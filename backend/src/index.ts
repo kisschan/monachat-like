@@ -349,12 +349,12 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
     scope: "whep",
   });
 
-  const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}&token=${encodeURIComponent(
+  const whepUrl = `${whipBase}/whep/?app=live&stream=${stream}&auth=${encodeURIComponent(
     whepToken
   )}`;
 
   if (state.publisherId === account.id) {
-    const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}&token=${encodeURIComponent(
+    const whipUrl = `${whipBase}/whip/?app=live&stream=${stream}&auth=${encodeURIComponent(
       whipToken
     )}`;
     return res.json({

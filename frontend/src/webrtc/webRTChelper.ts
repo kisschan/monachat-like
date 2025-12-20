@@ -63,10 +63,16 @@ function mergeQueryFromBase(resourceUrl: string, baseUrl: string): string {
   const u = new URL(resourceUrl);
   const b = new URL(baseUrl);
 
-  // nginx認可に必要なものを“欠けてたら”補う
-  for (const key of ["token", "app", "stream"] as const) {
+  // 認可用は auth に分離（SRSの token とは衝突させない）
+  for (const key of ["auth", "app", "stream"] as const) {
     const v = b.searchParams.get(key);
     if (v != null && u.searchParams.get(key) == null) u.searchParams.set(key, v);
+  }
+
+  // 移行期間用：古い baseUrl が token=whip:... しか持ってない場合は auth にコピー
+  const legacyToken = b.searchParams.get("token");
+  if (legacyToken != null && u.searchParams.get("auth") == null) {
+    u.searchParams.set("auth", legacyToken);
   }
 
   // もし過去の名残で action=delete を混ぜてたら掃除
