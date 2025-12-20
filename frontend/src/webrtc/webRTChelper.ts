@@ -48,7 +48,8 @@ export async function requireCreatedSdpWithLocation(
     );
   }
 
-  const resourceUrl = normalizeResourceLocation(locationHeader, baseUrl, kind);
+  const resourceUrl0 = normalizeResourceLocation(locationHeader, baseUrl, kind);
+  const resourceUrl = mergeQueryFromBase(resourceUrl0, baseUrl);
   const answerSdp = await res.text();
 
   if (!isNonEmptyString(answerSdp) || !answerSdp.includes("v=")) {
@@ -56,4 +57,24 @@ export async function requireCreatedSdpWithLocation(
   }
 
   return { resourceUrl, answerSdp };
+}
+
+function mergeQueryFromBase(resourceUrl: string, baseUrl: string): string {
+  const u = new URL(resourceUrl);
+  const b = new URL(baseUrl);
+
+  // nginx認可に必要なものを“欠けてたら”補う
+  for (const key of ["token", "app", "stream"] as const) {
+    const v = b.searchParams.get(key);
+    if (v != null && u.searchParams.get(key) == null) u.searchParams.set(key, v);
+  }
+
+  // もし過去の名残で action=delete を混ぜてたら掃除
+  u.searchParams.delete("action");
+
+  // /whip (no slash) を避けてリダイレクトを踏まない
+  if (u.pathname === "/whip") u.pathname = "/whip/";
+  if (u.pathname === "/whep") u.pathname = "/whep/";
+
+  return u.toString();
 }
