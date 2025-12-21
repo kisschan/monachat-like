@@ -418,8 +418,8 @@ app.all("/internal/live/whip-auth", (req, res) => {
   }
 
   const stream = url.searchParams.get("stream");
-  const token = url.searchParams.get("token");
 
+  const token = url.searchParams.get("token") ?? url.searchParams.get("auth");
   const result = checkWhipToken(stream, token);
 
   if (!result.ok) {
@@ -444,7 +444,7 @@ app.all("/internal/live/whep-auth", (req, res) => {
   }
 
   const stream = url.searchParams.get("stream");
-  const token = url.searchParams.get("token");
+  const token = url.searchParams.get("token") ?? url.searchParams.get("auth");
 
   const result = checkWhepToken(stream, token);
 
