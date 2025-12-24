@@ -34,8 +34,13 @@ export function liveAuth(
   }
 
   const requestedRoom = req.params.room;
-  const currentRoom = account.character.currentRoom;
+  const currentRoom = account.character?.currentRoom;
   const alive = account.alive;
+
+  if (!currentRoom) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
 
   if (!alive) {
     res.status(401).json({ error: "unauthorized" });

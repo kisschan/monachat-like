@@ -178,8 +178,19 @@ const ioServer: Server = new Server(server, {
 const logger: Logger = Log4js.getLogger();
 logger.level = "debug";
 
-app.use(cors());
-app.options("*", cors());
+const FRONTEND_HOST = process.env.FRONTEND_HOST;
+if (!FRONTEND_HOST) throw new Error("FRONTEND_HOST is not set");
+
+const corsOptions = {
+  origin: FRONTEND_HOST,
+  credentials: true,
+  allowedHeaders: ["X-Monachat-Token", "Content-Type"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -404,7 +415,7 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
-app.all("/internal/live/whip-auth", (req, res) => {
+app.get("/internal/live/whip-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
 
   const originalUri = req.header("X-Original-URI") ?? "";
@@ -429,7 +440,7 @@ app.all("/internal/live/whip-auth", (req, res) => {
   return res.status(200).end();
 });
 
-app.all("/internal/live/whep-auth", (req, res) => {
+app.get("/internal/live/whep-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
 
   const originalUri = req.header("X-Original-URI") ?? "";
