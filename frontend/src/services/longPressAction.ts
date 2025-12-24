@@ -1,4 +1,3 @@
-// services/longPressAction.ts
 import { useSettingStore, type LongPressAction } from "@/stores/setting";
 import { useUserStore } from "@/stores/user";
 import { useUsersStore } from "@/stores/users";
