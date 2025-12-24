@@ -10,11 +10,14 @@ services:
       - 3000:3000
     environment:
       NODE_ENV: development
+      FRONTEND_HOST: http://localhost:2108
     volumes:
       - "./backend:/app"
       - "/app/node_modules"
     tty: true
     stdin_open: true
+    networks:
+      - mynetwork
 
   frontend:
     build:
@@ -26,24 +29,34 @@ services:
       - 2108:2108
     environment:
       NODE_ENV: development
+      VITE_APP_SOCKET_HOST: http://localhost:3000
     volumes:
       - "./frontend:/app"
       - "/app/node_modules"
     tty: true
     stdin_open: true
+    command: sh -c "yarn install && yarn dev --host"
+    networks:
+      - mynetwork
+    depends_on:
+      - backend
 
-  storybook:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.storybook.dev
-    container_name: monafront-storybook-dev
-    restart: always
-    ports:
-      - 6006:6006
-    environment:
-      NODE_ENV: development
-    volumes:
-      - "./frontend:/app"
-      - "/app/node_modules"
-    tty: true
-    stdin_open: true
+      # エラーが出るから一旦回避
+      # storybook:
+      #   build:
+      #     context: ./frontend
+      #     dockerfile: Dockerfile.storybook.dev
+      #   container_name: monafront-storybook-dev
+      #   restart: always
+      #   ports:
+      #     - 6006:6006
+      #   environment:
+      #     NODE_ENV: development
+      #   volumes:
+      #     - "./frontend:/app"
+      #     - "/app/node_modules"
+      #   tty: true
+      #   stdin_open: true
+
+networks:
+  mynetwork:
