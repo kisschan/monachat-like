@@ -8,13 +8,14 @@
       </template>
     </header>
 
-    <section class="live-controls">
-      <div v-if="liveEnabled">
+    <section v-if="liveEnabled" class="live-grid">
+      <section class="live-controls">
         <h3>配信者コントロール</h3>
+
         <p v-if="errorMessage" class="error">
           {{ errorMessage }}
         </p>
-        <!-- 追加：配信モード切り替え -->
+
         <div class="mode-switch">
           <label>
             <input v-model="publishMode" type="radio" value="av" />
@@ -30,12 +31,9 @@
           <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
           <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
         </div>
-        <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
-      </div>
-    </section>
 
-    <section class="watch-controls">
-      <div v-if="liveEnabled">
+        <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
+
         <h3>視聴</h3>
 
         <div class="mode-switch">
@@ -53,12 +51,14 @@
           <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
           <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
         </div>
+      </section>
+      <section class="watch-controls">
         <video ref="videoRef" class="live-video" autoplay playsinline controls></video>
 
         <p v-if="isAudioOnlyLive" class="hint">
           現在の配信は音声のみです。視聴は音声のみとなります。
         </p>
-      </div>
+      </section>
     </section>
   </section>
 </template>
@@ -516,21 +516,36 @@ onBeforeUnmount(() => {
   font-weight: bold;
 }
 
-.live-controls,
-.watch-controls {
-  margin-bottom: 0.5rem;
-}
-
 .buttons {
   display: flex;
   gap: 0.5rem;
   margin: 0.25rem 0;
 }
 
+.live-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.live-controls,
+.watch-controls {
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+}
+
+.live-controls h3,
+.watch-controls h3 {
+  margin-top: 0;
+}
+
 .live-video {
   width: 100%;
-  max-height: 240px;
-  background: #000;
+  aspect-ratio: 16 / 9;
+  height: auto;
 }
 
 .error {
