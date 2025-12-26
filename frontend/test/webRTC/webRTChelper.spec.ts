@@ -130,3 +130,166 @@ describe("requireCreatedSdpWithLocation", () => {
     );
   });
 });
+
+describe("異なるoriginからの要求をbaseUrlで正しく処理できるか", () => {
+  it("locationが絶対URLで別originでも、baseUrlのoriginに強制される", async () => {
+    expect.hasAssertions();
+
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&auth=whip%3Axxx";
+
+    const locationHeader =
+      "https://evil.example.com/rtc/v1/whip/?app=live&stream=abc&session=s1&token=srsToken";
+
+    const sdp = "v=0\r\n";
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "application/sdp",
+        Location: locationHeader,
+      },
+      body: sdp,
+    });
+
+    const out = await requireCreatedSdpWithLocation(res as Response, baseUrl, "whip");
+    const u = new URL(out.resourceUrl);
+    const expectedOrigin = new URL(baseUrl).origin;
+
+    expect(u.origin).toBe(expectedOrigin);
+    expect(u.pathname).toBe("/whip/");
+    expect(u.searchParams.get("session")).toBe("s1");
+    expect(u.searchParams.get("token")).toBe("srsToken");
+  });
+
+  it("locationが相対URLの場合", async () => {
+    expect.hasAssertions();
+
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&auth=whip%3Axxx";
+    const locationHeader = "/rtc/v1/whip/?app=live&stream=abc&session=s1&token=srsToken";
+
+    const sdp = "v=0\r\n";
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "application/sdp",
+        Location: locationHeader,
+      },
+      body: sdp,
+    });
+
+    const out = await requireCreatedSdpWithLocation(res as Response, baseUrl, "whip");
+    const u = new URL(out.resourceUrl);
+    const expectedOrigin = new URL(baseUrl).origin;
+
+    expect(u.origin).toBe(expectedOrigin);
+    expect(u.pathname).toBe("/whip/");
+    expect(u.searchParams.get("session")).toBe("s1");
+    expect(u.searchParams.get("token")).toBe("srsToken");
+  });
+});
+
+describe("レスポンス検証（Content-Type/SDP）", () => {
+  it("content-Type が不正な場合はエラーになる", async () => {
+    expect.hasAssertions();
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&auth=whip%3Axxx";
+    const locationHeader =
+      "https://live.monachat.tech/rtc/v1/whip/?app=live&stream=abc&session=s1&token=srsToken";
+    const sdp = "v=0\r\n";
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "text/html", // 不正
+        Location: locationHeader,
+      },
+      body: sdp,
+    });
+
+    await expect(requireCreatedSdpWithLocation(res as Response, baseUrl, "whip")).rejects.toThrow(
+      /unexpected Content-Type/i,
+    );
+  });
+
+  it("sDP本文が不正な場合はエラーになる", async () => {
+    expect.hasAssertions();
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&auth=whip%3Axxx";
+    const locationHeader =
+      "https://live.monachat.tech/rtc/v1/whip/?app=live&stream=abc&session=s1&token=srsToken";
+    const sdp = "invalid sdp body"; // 不正
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "application/sdp",
+        Location: locationHeader,
+      },
+      body: sdp,
+    });
+    await expect(requireCreatedSdpWithLocation(res as Response, baseUrl, "whip")).rejects.toThrow(
+      /invalid SDP answer body/i,
+    );
+  });
+});
+
+describe("auth/tokenの混在コピーが片方だけ働くケース", () => {
+  it("baseUrl に auth しか無い場合、token はコピーされない", async () => {
+    expect.hasAssertions();
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&auth=whip%3Axxx";
+    const locationHeader = "https://live.monachat.tech/rtc/v1/whip/?app=live&stream=abc&session=s1";
+    const sdp = "v=0\r\n";
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "application/sdp",
+        Location: locationHeader,
+      },
+      body: sdp,
+    });
+    const out = await requireCreatedSdpWithLocation(res as Response, baseUrl, "whip");
+    const u = new URL(out.resourceUrl);
+    expect(u.searchParams.get("auth")).toBe("whip:xxx");
+    expect(u.searchParams.get("token")).toBeNull(); // ←ここが本命
+  });
+
+  it("baseurlにtokenしかない場合、authはコピーされる", async () => {
+    expect.hasAssertions();
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&token=whip%3Axxx";
+    const locationHeader =
+      "https://live.monachat.tech/rtc/v1/whip/?app=live&stream=abc&session=s1&token=srsToken";
+    const sdp = "v=0\r\n";
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "application/sdp",
+        Location: locationHeader,
+      },
+      body: sdp,
+    });
+    const out = await requireCreatedSdpWithLocation(res as Response, baseUrl, "whip");
+    const u = new URL(out.resourceUrl);
+    expect(u.searchParams.get("auth")).toBe("whip:xxx");
+    expect(u.searchParams.get("token")).toBe("srsToken");
+  });
+});
+
+describe("scheme-relative Location の処理", () => {
+  it("scheme-relative URL を正しく解決できる", async () => {
+    expect.hasAssertions();
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&auth=whip%3Axxx";
+    const locationHeader =
+      "//evil.monachat.tech/rtc/v1/whip/?app=live&stream=abc&session=s1&token=srsToken";
+    const sdp = "v=0\r\n";
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "application/sdp",
+        Location: locationHeader,
+      },
+      body: sdp,
+    });
+    const out = await requireCreatedSdpWithLocation(res as Response, baseUrl, "whip");
+    const u = new URL(out.resourceUrl);
+    const expectedOrigin = new URL(baseUrl).origin;
+    expect(u.origin).toBe(expectedOrigin);
+    expect(u.pathname).toBe("/whip/");
+    expect(u.searchParams.get("session")).toBe("s1");
+    expect(u.searchParams.get("token")).toBe("srsToken");
+  });
+});
