@@ -9,22 +9,15 @@
     </header>
 
     <section v-if="liveEnabled" class="live-grid">
-      <section class="live-controls">
+      <!-- 左：コントロールカード（配信者＋視聴UI） -->
+      <section class="live-card live-card--controls">
         <h3>配信者コントロール</h3>
 
-        <p v-if="errorMessage" class="error">
-          {{ errorMessage }}
-        </p>
+        <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
 
         <div class="mode-switch">
-          <label>
-            <input v-model="publishMode" type="radio" value="av" />
-            映像＋音声
-          </label>
-          <label>
-            <input v-model="publishMode" type="radio" value="audio" />
-            音声のみ
-          </label>
+          <label><input v-model="publishMode" type="radio" value="av" /> 映像＋音声</label>
+          <label><input v-model="publishMode" type="radio" value="audio" /> 音声のみ</label>
         </div>
 
         <div class="buttons">
@@ -34,17 +27,16 @@
 
         <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
 
+        <hr class="live-sep" />
+
         <h3>視聴</h3>
 
         <div class="mode-switch">
-          <label>
-            <input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
-            映像＋音声
-          </label>
-          <label>
-            <input v-model="watchMode" type="radio" value="audio" />
-            音声のみ
-          </label>
+          <label
+            ><input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
+            映像＋音声</label
+          >
+          <label><input v-model="watchMode" type="radio" value="audio" /> 音声のみ</label>
         </div>
 
         <div class="buttons">
@@ -52,7 +44,9 @@
           <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
         </div>
       </section>
-      <section class="watch-controls">
+
+      <!-- 右：プレイヤーカード（videoだけ） -->
+      <section class="live-card live-card--player">
         <video ref="videoRef" class="live-video" autoplay playsinline controls></video>
 
         <p v-if="isAudioOnlyLive" class="hint">
@@ -483,10 +477,20 @@ watch(isAudioOnlyLive, (val) => {
   }
 });
 
+watch(
+  () => liveEnabled.value,
+  (enabled) => {
+    if (!enabled) return;
+    if (!roomId.value || !token.value) return;
+    loadStatus().catch((e) => console.error("failed to load live status", e));
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   socketIOInstance.on("live_status_change", handleLiveStatusChange);
   if (liveEnabled.value) {
-    loadStatus();
+    loadStatus().catch((e) => console.error("failed to load live status on mount", e));
   }
 });
 
@@ -507,60 +511,80 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .live-area {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.live-header {
-  font-weight: bold;
-}
-
-.buttons {
-  display: flex;
-  gap: 0.5rem;
-  margin: 0.25rem 0;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 12px 16px 20px;
 }
 
 .live-grid {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(300px, 2fr) minmax(420px, 3fr);
+  gap: 14px;
   align-items: start;
 }
 
-.live-controls,
-.watch-controls {
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  padding: 16px;
-  background: #fff;
+.live-header {
+  font-weight: 700;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.live-controls h3,
-.watch-controls h3 {
-  margin-top: 0;
+.live-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.live-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.live-sep {
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin: 12px 0;
+}
+
+.mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin: 6px 0 10px;
+  font-size: 13px;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.buttons :deep(.p-button) {
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
 .live-video {
   width: 100%;
   aspect-ratio: 16 / 9;
   height: auto;
+  border-radius: 12px;
+  background: #111;
+  display: block;
 }
 
 .error {
-  color: #f55;
+  color: #d64545;
   font-size: 0.9rem;
 }
 
 .hint {
   font-size: 0.8rem;
   opacity: 0.8;
-}
-.mode-switch {
-  display: flex;
-  gap: 0.75rem;
-  font-size: 0.85rem;
-  margin-bottom: 0.25rem;
+  margin-top: 10px;
 }
 </style>
