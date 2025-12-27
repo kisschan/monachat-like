@@ -16,8 +16,49 @@
         <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
 
         <div class="mode-switch">
-          <label><input v-model="publishMode" type="radio" value="av" /> 映像＋音声</label>
-          <label><input v-model="publishMode" type="radio" value="audio" /> 音声のみ</label>
+          <!-- 配信モード（P0：開始前に選択） -->
+
+          <div class="mode-switch">
+            <label>
+              <input
+                v-model="publishMode"
+                type="radio"
+                value="camera"
+                :disabled="isBusyPublish || isLive"
+              />
+              カメラ＋マイク
+            </label>
+
+            <label>
+              <input
+                v-model="publishMode"
+                type="radio"
+                value="screen"
+                :disabled="isBusyPublish || isLive"
+              />
+              画面＋マイク
+            </label>
+
+            <label>
+              <input
+                v-model="publishMode"
+                type="radio"
+                value="screen_silent"
+                :disabled="isBusyPublish || isLive"
+              />
+              画面のみ
+            </label>
+
+            <label>
+              <input
+                v-model="publishMode"
+                type="radio"
+                value="audio"
+                :disabled="isBusyPublish || isLive"
+              />
+              マイクのみ
+            </label>
+          </div>
         </div>
 
         <div class="buttons">
@@ -65,7 +106,12 @@ import { useRoomStore } from "@/stores/room";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import { socketIOInstance, type LiveStatusChangePayload } from "@/socketIOInstance";
-import { MediaAcquireError, startWhipPublish, type WhipPublishHandle } from "@/webrtc/whipClient";
+import {
+  MediaAcquireError,
+  startWhipPublish,
+  type WhipPublishHandle,
+  type PublishMode,
+} from "@/webrtc/whipClient";
 import {
   WhepRequestError,
   startWhepSubscribe,
@@ -85,11 +131,12 @@ const isLive = ref(false);
 const publisherName = ref<string | null>(null);
 const publisherId = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
-const publishMode = ref<"av" | "audio">("av");
+const publishMode = ref<PublishMode>("camera");
 
 // 配信者側
 const isBusyPublish = ref(false);
 const publishHandle = ref<WhipPublishHandle | null>(null);
+const isStoppingPublish = ref(false);
 
 // 視聴者側
 const isBusyWatch = ref(false);
@@ -225,6 +272,46 @@ const loadStatus = async () => {
 
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
 
+const stopPublishSafely = async (_reason?: string) => {
+  console.log("stopPublishSafely called", _reason);
+  if (isStoppingPublish.value) return;
+
+  isStoppingPublish.value = true;
+  isBusyPublish.value = true;
+  errorMessage.value = null;
+
+  try {
+    if (publishHandle.value) {
+      await publishHandle.value.stop();
+      publishHandle.value = null;
+    }
+
+    if (roomId.value && token.value) {
+      await stopLive(roomId.value, token.value);
+      await loadStatus();
+    }
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e)) {
+      const status = e.response?.status;
+      const code = e.response?.data?.error;
+
+      if (status === 403 && code === "not-publisher") {
+        errorMessage.value = "配信者ではないため停止できません。";
+      } else if (status === 403) {
+        errorMessage.value = "配信を停止する権限がありません。";
+      } else {
+        errorMessage.value = "配信停止に失敗しました。";
+      }
+    } else {
+      errorMessage.value = "予期しないエラーが発生しました。";
+      console.error(e);
+    }
+  } finally {
+    isBusyPublish.value = false;
+    isStoppingPublish.value = false;
+  }
+};
+
 const onClickStartPublish = async () => {
   if (!roomId.value || !token.value) return;
   if (!canStartPublish.value) return;
@@ -246,8 +333,10 @@ const onClickStartPublish = async () => {
     }
 
     const handle = await startWhipPublish(config.whipUrl, {
-      audioOnly: isPublishAudioOnly.value,
+      mode: publishMode.value,
+      onDisplayEnded: () => stopPublishSafely("display-ended"),
     });
+
     publishHandle.value = handle;
     needsRollback = false;
     await loadStatus();
@@ -300,36 +389,7 @@ const onClickStopPublish = async () => {
   if (!roomId.value || !token.value) return;
   if (!canStopPublish.value) return;
 
-  errorMessage.value = null;
-  isBusyPublish.value = true;
-
-  try {
-    if (publishHandle.value) {
-      await publishHandle.value.stop();
-      publishHandle.value = null;
-    }
-
-    await stopLive(roomId.value, token.value);
-    await loadStatus();
-  } catch (e: unknown) {
-    if (axios.isAxiosError(e)) {
-      const status = e.response?.status;
-      const code = e.response?.data?.error;
-
-      if (status === 403 && code === "not-publisher") {
-        errorMessage.value = "配信者ではないため停止できません。";
-      } else if (status === 403) {
-        errorMessage.value = "配信を停止する権限がありません。";
-      } else {
-        errorMessage.value = "配信停止に失敗しました。";
-      }
-    } else {
-      errorMessage.value = "予期しないエラーが発生しました。";
-      console.error(e);
-    }
-  } finally {
-    isBusyPublish.value = false;
-  }
+  await stopPublishSafely("manual");
 };
 
 const onClickStartWatch = async () => {
