@@ -1,7 +1,7 @@
 import { waitForIceGatheringComplete } from "./ice";
 import { requireCreatedSdpWithLocation } from "./webRTChelper";
 
-export type PublishMode = "camera" | "screen" | "screen_silent" | "audio";
+export type PublishMode = "camera" | "screen" | "audio";
 
 export type WhipPublishHandle = {
   stop: () => Promise<void>;
@@ -18,19 +18,19 @@ export type WhipPublishOptions = {
 };
 
 export class MediaAcquireError extends Error {
-  code: "permission-denied" | "no-device" | "constraint-failed" | "unknown";
+  code:
+    | "permission-denied"
+    | "no-device"
+    | "constraint-failed"
+    | "not-supported"
+    | "screen-audio-unavailable"
+    | "unknown";
 
   constructor(code: MediaAcquireError["code"], message?: string) {
     super(message);
     this.code = code;
   }
 }
-
-type StreamForModeResult = {
-  composed: MediaStream;
-  sources: MediaStream[];
-  displayVideoTrack?: MediaStreamTrack;
-};
 
 const toMediaAcquireError = (e: unknown): MediaAcquireError => {
   if (e instanceof DOMException) {
@@ -43,6 +43,14 @@ const toMediaAcquireError = (e: unknown): MediaAcquireError => {
     if (e.name === "OverconstrainedError") {
       return new MediaAcquireError("constraint-failed", e.message);
     }
+    if (e.name === "NotSupportedError") {
+      return new MediaAcquireError("not-supported", e.message);
+    }
+  }
+
+  // getDisplayMedia 未実装環境で起きがち
+  if (e instanceof TypeError) {
+    return new MediaAcquireError("not-supported", e.message);
   }
 
   return new MediaAcquireError("unknown", e instanceof Error ? e.message : String(e));
@@ -70,13 +78,29 @@ const getCameraStream = async (): Promise<MediaStream> => {
   }
 };
 
-const getDisplayStream = async (): Promise<MediaStream> => {
+const getDisplayStreamWithAudio = async (): Promise<MediaStream> => {
+  const mediaDevices = navigator.mediaDevices; // MediaDevices | undefined の可能性
+
+  if (mediaDevices == null) {
+    throw new MediaAcquireError("not-supported", "mediaDevices is not available");
+  }
+
+  const getDisplayMedia = mediaDevices.getDisplayMedia;
+  if (typeof getDisplayMedia !== "function") {
+    throw new MediaAcquireError("not-supported", "getDisplayMedia is not supported");
+  }
+
   try {
-    // P0: システム音声は扱わない
-    return await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    return await getDisplayMedia.call(mediaDevices, { video: true, audio: true });
   } catch (e: unknown) {
     throw toMediaAcquireError(e);
   }
+};
+
+type StreamForModeResult = {
+  composed: MediaStream;
+  sources: MediaStream[];
+  displayVideoTrack?: MediaStreamTrack;
 };
 
 async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult> {
@@ -85,34 +109,29 @@ async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult>
     return { composed: micStream, sources: [micStream] };
   }
 
-  if (mode === "screen_silent") {
-    const displayStream = await getDisplayStream();
+  if (mode === "screen") {
+    const displayStream = await getDisplayStreamWithAudio();
+
     const videoTrack = displayStream.getVideoTracks()[0];
+    const audioTrack = displayStream.getAudioTracks()[0];
+
     if (!videoTrack) {
       throw new MediaAcquireError("unknown", "no display video track");
     }
-    const composed = new MediaStream([videoTrack]);
+
+    // このブランチでは audio 前提なので「取れなければ開始しない」
+    if (!audioTrack) {
+      throw new MediaAcquireError(
+        "screen-audio-unavailable",
+        "no audio track from display capture (target/OS/browser limitation)",
+      );
+    }
+
+    const composed = new MediaStream([videoTrack, audioTrack]);
+
     return {
       composed,
       sources: [displayStream],
-      displayVideoTrack: videoTrack,
-    };
-  }
-
-  if (mode === "screen") {
-    const [displayStream, micStream] = await Promise.all([getDisplayStream(), getMicStream()]);
-    const videoTrack = displayStream.getVideoTracks()[0];
-    const audioTrack = micStream.getAudioTracks()[0];
-    if (!videoTrack) {
-      throw new MediaAcquireError("unknown", "no display video track");
-    }
-    if (!audioTrack) {
-      throw new MediaAcquireError("no-device", "no audio track from microphone");
-    }
-    const composed = new MediaStream([videoTrack, audioTrack]);
-    return {
-      composed,
-      sources: [displayStream, micStream],
       displayVideoTrack: videoTrack,
     };
   }

@@ -14,52 +14,49 @@
         <h3>配信者コントロール</h3>
 
         <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-
+        <!-- 配信モード（開始前に選択） -->
         <div class="mode-switch">
-          <!-- 配信モード（P0：開始前に選択） -->
+          <label>
+            <input
+              v-model="publishMode"
+              type="radio"
+              value="camera"
+              :disabled="isBusyPublish || isLive"
+            />
+            カメラ＋マイク
+          </label>
 
-          <div class="mode-switch">
-            <label>
-              <input
-                v-model="publishMode"
-                type="radio"
-                value="camera"
-                :disabled="isBusyPublish || isLive"
-              />
-              カメラ＋マイク
-            </label>
+          <label>
+            <input
+              v-model="publishMode"
+              type="radio"
+              value="screen"
+              :disabled="isBusyPublish || isLive"
+            />
+            画面＋画面音声
+          </label>
 
-            <label>
-              <input
-                v-model="publishMode"
-                type="radio"
-                value="screen"
-                :disabled="isBusyPublish || isLive"
-              />
-              画面＋マイク
-            </label>
-
-            <label>
-              <input
-                v-model="publishMode"
-                type="radio"
-                value="screen_silent"
-                :disabled="isBusyPublish || isLive"
-              />
-              画面のみ
-            </label>
-
-            <label>
-              <input
-                v-model="publishMode"
-                type="radio"
-                value="audio"
-                :disabled="isBusyPublish || isLive"
-              />
-              マイクのみ
-            </label>
-          </div>
+          <label>
+            <input
+              v-model="publishMode"
+              type="radio"
+              value="audio"
+              :disabled="isBusyPublish || isLive"
+            />
+            マイクのみ
+          </label>
         </div>
+
+        <!-- screenの注意（常時表示でも、screen選択時のみでもOK） -->
+        <p v-if="publishMode === 'screen'" class="hint">
+          画面音声は「共有対象」と「共有ダイアログの音声共有設定」に依存します。
+          音声が取得できない場合は配信開始できません。
+        </p>
+
+        <!-- screen音声が取れなかった時の専用表示 -->
+        <p v-if="screenAudioNotice" class="error">
+          {{ screenAudioNotice }}
+        </p>
 
         <div class="buttons">
           <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
@@ -132,6 +129,7 @@ const publisherName = ref<string | null>(null);
 const publisherId = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
 const publishMode = ref<PublishMode>("camera");
+const screenAudioNotice = ref<string | null>(null);
 
 // 配信者側
 const isBusyPublish = ref(false);
@@ -162,6 +160,13 @@ const liveEnabled = computed(() => {
 const isMyLive = computed(
   () => isLive.value && publisherId.value != null && publisherId.value === myId.value,
 );
+
+//画面共有機能
+
+const clearPublishUiErrors = () => {
+  errorMessage.value = null;
+  screenAudioNotice.value = null;
+};
 
 // =====================
 // favicon 差し替え（配信者のみ）
@@ -272,9 +277,10 @@ const loadStatus = async () => {
 
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
 
-const stopPublishSafely = async (_reason?: string) => {
-  console.log("stopPublishSafely called", _reason);
+const stopPublishSafely = async (reason?: string) => {
   if (isStoppingPublish.value) return;
+
+  console.debug("[live] stopPublishSafely", { reason });
 
   isStoppingPublish.value = true;
   isBusyPublish.value = true;
@@ -290,22 +296,6 @@ const stopPublishSafely = async (_reason?: string) => {
       await stopLive(roomId.value, token.value);
       await loadStatus();
     }
-  } catch (e: unknown) {
-    if (axios.isAxiosError(e)) {
-      const status = e.response?.status;
-      const code = e.response?.data?.error;
-
-      if (status === 403 && code === "not-publisher") {
-        errorMessage.value = "配信者ではないため停止できません。";
-      } else if (status === 403) {
-        errorMessage.value = "配信を停止する権限がありません。";
-      } else {
-        errorMessage.value = "配信停止に失敗しました。";
-      }
-    } else {
-      errorMessage.value = "予期しないエラーが発生しました。";
-      console.error(e);
-    }
   } finally {
     isBusyPublish.value = false;
     isStoppingPublish.value = false;
@@ -316,21 +306,17 @@ const onClickStartPublish = async () => {
   if (!roomId.value || !token.value) return;
   if (!canStartPublish.value) return;
 
-  errorMessage.value = null;
+  clearPublishUiErrors();
   isBusyPublish.value = true;
 
   let needsRollback = false;
 
   try {
-    // 1. まずサーバ側でロック（配信者登録）を取る
     await startLive(roomId.value, token.value, isPublishAudioOnly.value);
     needsRollback = true;
 
-    // 2. WHIP 用設定を取得
     const config = await fetchWebrtcConfig(roomId.value, token.value);
-    if (!config.whipUrl) {
-      throw new Error("whip-url-missing");
-    }
+    if (!config.whipUrl) throw new Error("whip-url-missing");
 
     const handle = await startWhipPublish(config.whipUrl, {
       mode: publishMode.value,
@@ -350,6 +336,7 @@ const onClickStartPublish = async () => {
 // エラー時の処理
 const onClickStartPublishCatch = async (e: unknown, rollback: boolean) => {
   if (axios.isAxiosError(e)) {
+    // 既存のままでOK
     const status = e.response?.status;
     const code = e.response?.data?.error;
 
@@ -363,12 +350,29 @@ const onClickStartPublishCatch = async (e: unknown, rollback: boolean) => {
       errorMessage.value = "配信開始に失敗しました（サーバーエラー）。";
     }
   } else if (e instanceof MediaAcquireError) {
-    if (e.code === "permission-denied") {
-      errorMessage.value = "マイクやカメラへのアクセスがブラウザに拒否されています。";
-    } else if (e.code === "no-device") {
-      errorMessage.value = "利用可能なマイク／カメラが見つかりません。";
+    // screenはマイクを扱わないので、メッセージも「マイク/カメラ」固定にしない
+    if (publishMode.value === "screen") {
+      if (e.code === "screen-audio-unavailable") {
+        // ここが「落とすけど納得させる」要
+        screenAudioNotice.value =
+          "画面音声を共有できませんでした。共有ダイアログで「音声を共有」を有効にするか、音声共有可能な対象（例：ブラウザのタブ）を選んでください。";
+        errorMessage.value = "配信開始に失敗しました（画面音声を取得できません）。";
+      } else if (e.code === "permission-denied") {
+        errorMessage.value = "画面共有が拒否されました（ブラウザの権限/操作を確認してください）。";
+      } else if (e.code === "not-supported") {
+        errorMessage.value = "この端末/ブラウザでは画面共有配信に未対応です。";
+      } else {
+        errorMessage.value = "画面共有の取得に失敗しました。";
+      }
     } else {
-      errorMessage.value = "マイク／カメラの取得に失敗しました。";
+      // camera/audio 側の既存文言
+      if (e.code === "permission-denied") {
+        errorMessage.value = "マイクやカメラへのアクセスがブラウザに拒否されています。";
+      } else if (e.code === "no-device") {
+        errorMessage.value = "利用可能なマイク／カメラが見つかりません。";
+      } else {
+        errorMessage.value = "マイク／カメラの取得に失敗しました。";
+      }
     }
   } else {
     errorMessage.value = "予期しないエラーが発生しました。";
@@ -379,6 +383,7 @@ const onClickStartPublishCatch = async (e: unknown, rollback: boolean) => {
   if (rollback) {
     try {
       await stopLive(roomId.value, token.value);
+      await loadStatus(); // rollback後、UI状態を確実に戻す保険
     } catch (stopErr) {
       console.error("stopLive failed after start publish error", stopErr);
     }
