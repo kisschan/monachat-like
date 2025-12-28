@@ -103,6 +103,16 @@ type StreamForModeResult = {
   displayVideoTrack?: MediaStreamTrack;
 };
 
+const stopStream = (s: MediaStream): void => {
+  for (const t of s.getTracks()) {
+    try {
+      t.stop();
+    } catch {
+      // ignore
+    }
+  }
+};
+
 async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult> {
   if (mode === "audio") {
     const micStream = await getMicStream();
@@ -115,12 +125,13 @@ async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult>
     const videoTrack = displayStream.getVideoTracks()[0];
     const audioTrack = displayStream.getAudioTracks()[0];
 
-    if (!videoTrack) {
+    if (videoTrack == null) {
+      stopStream(displayStream);
       throw new MediaAcquireError("unknown", "no display video track");
     }
 
-    // このブランチでは audio 前提なので「取れなければ開始しない」
-    if (!audioTrack) {
+    if (audioTrack == null) {
+      stopStream(displayStream);
       throw new MediaAcquireError(
         "screen-audio-unavailable",
         "no audio track from display capture (target/OS/browser limitation)",
@@ -136,7 +147,6 @@ async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult>
     };
   }
 
-  // default: camera
   const cameraStream = await getCameraStream();
   return { composed: cameraStream, sources: [cameraStream] };
 }
