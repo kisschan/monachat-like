@@ -277,24 +277,73 @@ const loadStatus = async () => {
 
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
 
-const stopPublishSafely = async (reason?: string) => {
+const stopPublishSafely = async (reason: string): Promise<void> => {
+  console.log(`[live] stopPublishSafely called: reason=${reason}`);
   if (isStoppingPublish.value) return;
-
-  console.debug("[live] stopPublishSafely", { reason });
 
   isStoppingPublish.value = true;
   isBusyPublish.value = true;
-  errorMessage.value = null;
+
+  // ここで UI エラーを一旦消す（停止失敗時は下で詰め直す）
+  clearPublishUiErrors();
+
+  // 二重 stop の競合を避けるため、参照をローカルに退避して先に null にする
+  const handle = publishHandle.value;
+  publishHandle.value = null;
 
   try {
-    if (publishHandle.value) {
-      await publishHandle.value.stop();
-      publishHandle.value = null;
+    // (1) WHIP 停止（ローカル資源解放）
+    if (handle !== null) {
+      try {
+        await handle.stop();
+      } catch (e: unknown) {
+        // サーバ解除は続行する。ここで止めるとロック解除に到達しない。
+        console.error("[live] whip stop failed", e);
+        // ここは「停止が完全ではないかも」程度の弱いメッセージに留めるのが無難
+        errorMessage.value = "配信停止処理中に通信エラーが発生しました。";
+      }
     }
 
+    // (2) サーバ側ロック解除
     if (roomId.value && token.value) {
-      await stopLive(roomId.value, token.value);
-      await loadStatus();
+      try {
+        await stopLive(roomId.value, token.value);
+      } catch (e: unknown) {
+        if (axios.isAxiosError(e)) {
+          const status = e.response?.status;
+          const code = e.response?.data?.error;
+
+          if (status === 403 && code === "not-publisher") {
+            // 既にサーバ側では配信者扱いでない、または状態がズレている
+            errorMessage.value =
+              "配信者ではないため停止できません（状態が更新されている可能性があります）。";
+          } else if (status === 403) {
+            errorMessage.value = "配信を停止する権限がありません。";
+          } else {
+            errorMessage.value =
+              "配信停止をサーバへ通知できませんでした（ネットワーク/サーバ障害の可能性）。";
+          }
+        } else {
+          console.error("[live] stopLive failed", e);
+          errorMessage.value =
+            "配信停止をサーバへ通知できませんでした（ネットワーク障害の可能性）。";
+        }
+        // stopLive が失敗しても、状態同期は試みる（成功する場合がある）
+      }
+    }
+
+    // (3) 状態同期（成功すれば UI が正しく戻る）
+    if (roomId.value && token.value) {
+      try {
+        await loadStatus();
+      } catch (e: unknown) {
+        console.error("[live] loadStatus failed after stop", e);
+        // 既にエラーを出していなければ、ここで初めて出す
+        if (errorMessage.value == null) {
+          errorMessage.value =
+            "停止後の状態更新に失敗しました。ページ再読み込みで状態を確認してください。";
+        }
+      }
     }
   } finally {
     isBusyPublish.value = false;
