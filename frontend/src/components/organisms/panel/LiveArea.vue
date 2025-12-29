@@ -105,6 +105,7 @@ import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import { socketIOInstance, type LiveStatusChangePayload } from "@/socketIOInstance";
 import {
   MediaAcquireError,
+  PublishCancelledError,
   startWhipPublish,
   type WhipPublishHandle,
   type PublishMode,
@@ -135,6 +136,15 @@ const screenAudioNotice = ref<string | null>(null);
 const isBusyPublish = ref(false);
 const publishHandle = ref<WhipPublishHandle | null>(null);
 const isStoppingPublish = ref(false);
+let publishAttemptSeq = 0;
+const cancelledPublishAttempts = new Set<number>();
+const activePublishCtx = ref<{ roomId: string; token: string } | null>(null);
+const lastPublishCtx = ref<{ roomId: string; token: string } | null>(null);
+class PublishStartAbortedError extends Error {}
+const publishStartEpoch = ref(0);
+const abortInFlightPublishStart = () => {
+  publishStartEpoch.value++;
+};
 
 // 視聴者側
 const isBusyWatch = ref(false);
@@ -242,7 +252,14 @@ watch(
 
 const canStartPublish = computed(() => {
   return (
-    liveEnabled.value && !isBusyPublish.value && !isLive.value && !!roomId.value && !!token.value
+    liveEnabled.value &&
+    !isBusyPublish.value &&
+    !isLive.value &&
+    publishHandle.value === null &&
+    activePublishCtx.value === null &&
+    lastPublishCtx.value === null && // ← 任意：まず停止で回復させる
+    !!roomId.value &&
+    !!token.value
   );
 });
 
@@ -258,12 +275,30 @@ const canStartWatch = computed(() => {
 });
 
 const canStopPublish = computed(() => {
-  return !isBusyPublish.value && isMyLive.value;
+  return (
+    !isBusyPublish.value &&
+    (isMyLive.value ||
+      publishHandle.value !== null ||
+      activePublishCtx.value !== null ||
+      lastPublishCtx.value !== null)
+  );
 });
 
 const canStopWatch = computed(() => {
   return !isBusyWatch.value && subscribeHandle.value !== null;
 });
+
+const loadStatusFor = async (ctx: { roomId: string; token: string }) => {
+  const res = await fetchLiveStatus(ctx.roomId, ctx.token);
+
+  // 今見てる部屋と違うなら、UI状態は更新しない
+  if (userStore.currentRoom?.id !== ctx.roomId) return;
+
+  isLive.value = res.isLive;
+  publisherName.value = res.publisherName;
+  publisherId.value = res.publisherId;
+  isAudioOnlyLive.value = res.audioOnly ?? false;
+};
 
 const loadStatus = async () => {
   if (!roomId.value || !token.value) return;
@@ -278,71 +313,68 @@ const loadStatus = async () => {
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
 
 const stopPublishSafely = async (reason: string): Promise<void> => {
-  console.log(`[live] stopPublishSafely called: reason=${reason}`);
+  console.debug("stopPublishSafely called:", reason);
   if (isStoppingPublish.value) return;
 
   isStoppingPublish.value = true;
   isBusyPublish.value = true;
-
-  // ここで UI エラーを一旦消す（停止失敗時は下で詰め直す）
   clearPublishUiErrors();
 
-  // 二重 stop の競合を避けるため、参照をローカルに退避して先に null にする
+  // ctx が無いなら「今の roomId/token」で最後の一撃を用意
+  const fallbackCtx =
+    roomId.value && token.value ? { roomId: roomId.value, token: token.value } : null;
+
+  const ctx = activePublishCtx.value ?? lastPublishCtx.value ?? fallbackCtx;
+
   const handle = publishHandle.value;
   publishHandle.value = null;
 
   try {
-    // (1) WHIP 停止（ローカル資源解放）
-    if (handle !== null) {
+    if (handle) {
       try {
         await handle.stop();
-      } catch (e: unknown) {
-        // サーバ解除は続行する。ここで止めるとロック解除に到達しない。
-        console.error("[live] whip stop failed", e);
-        // ここは「停止が完全ではないかも」程度の弱いメッセージに留めるのが無難
-        errorMessage.value = "配信停止処理中に通信エラーが発生しました。";
-      }
+      } catch {}
     }
 
-    // (2) サーバ側ロック解除
-    if (roomId.value && token.value) {
+    if (ctx) {
       try {
-        await stopLive(roomId.value, token.value);
-      } catch (e: unknown) {
+        await stopLive(ctx.roomId, ctx.token);
+        // 成功したら ctx を消す（active を優先して消す）
+        if (ctx) {
+          // stopLive 成功後
+          if (activePublishCtx.value?.roomId === ctx.roomId) activePublishCtx.value = null;
+          if (lastPublishCtx.value?.roomId === ctx.roomId) lastPublishCtx.value = null;
+        }
+      } catch (e) {
         if (axios.isAxiosError(e)) {
           const status = e.response?.status;
           const code = e.response?.data?.error;
-
           if (status === 403 && code === "not-publisher") {
-            // 既にサーバ側では配信者扱いでない、または状態がズレている
             errorMessage.value =
               "配信者ではないため停止できません（状態が更新されている可能性があります）。";
-          } else if (status === 403) {
-            errorMessage.value = "配信を停止する権限がありません。";
+            activePublishCtx.value = null;
+            lastPublishCtx.value = null;
           } else {
             errorMessage.value =
-              "配信停止をサーバへ通知できませんでした（ネットワーク/サーバ障害の可能性）。";
+              "配信停止をサーバへ通知できませんでした（通信/サーバ障害の可能性）。";
           }
         } else {
-          console.error("[live] stopLive failed", e);
-          errorMessage.value =
-            "配信停止をサーバへ通知できませんでした（ネットワーク障害の可能性）。";
+          errorMessage.value = "配信停止をサーバへ通知できませんでした（通信障害の可能性）。";
         }
-        // stopLive が失敗しても、状態同期は試みる（成功する場合がある）
       }
     }
 
-    // (3) 状態同期（成功すれば UI が正しく戻る）
-    if (roomId.value && token.value) {
-      try {
-        await loadStatus();
-      } catch (e: unknown) {
-        console.error("[live] loadStatus failed after stop", e);
-        // 既にエラーを出していなければ、ここで初めて出す
-        if (errorMessage.value == null) {
-          errorMessage.value =
-            "停止後の状態更新に失敗しました。ページ再読み込みで状態を確認してください。";
-        }
+    // 状態同期も ctx 優先でOK
+    try {
+      if (ctx && ctx.roomId === roomId.value) {
+        await loadStatusFor(ctx);
+      } else {
+        await loadStatus(); // 今いる部屋の状態を再取得
+      }
+    } catch (e) {
+      console.error("failed to sync live status after stop", e);
+      if (errorMessage.value == null) {
+        errorMessage.value = "停止後の状態更新に失敗しました。ページ再読み込みで確認してください。";
       }
     }
   } finally {
@@ -352,38 +384,103 @@ const stopPublishSafely = async (reason: string): Promise<void> => {
 };
 
 const onClickStartPublish = async () => {
-  if (!roomId.value || !token.value) return;
+  const rid = roomId.value;
+  const tok = token.value;
+  if (!rid || !tok) return;
   if (!canStartPublish.value) return;
 
   clearPublishUiErrors();
   isBusyPublish.value = true;
 
+  const epoch = ++publishStartEpoch.value;
+  const ensureNotAborted = () => {
+    if (epoch !== publishStartEpoch.value) throw new PublishStartAbortedError();
+  };
+
+  const attemptId = ++publishAttemptSeq;
   let needsRollback = false;
+  let tmpHandle: WhipPublishHandle | null = null; // ★追加
 
   try {
-    await startLive(roomId.value, token.value, isPublishAudioOnly.value);
+    await startLive(rid, tok, isPublishAudioOnly.value);
     needsRollback = true;
+    ensureNotAborted();
 
-    const config = await fetchWebrtcConfig(roomId.value, token.value);
+    activePublishCtx.value = { roomId: rid, token: tok };
+    lastPublishCtx.value = { roomId: rid, token: tok };
+
+    const config = await fetchWebrtcConfig(rid, tok);
+    ensureNotAborted();
     if (!config.whipUrl) throw new Error("whip-url-missing");
 
-    const handle = await startWhipPublish(config.whipUrl, {
+    tmpHandle = await startWhipPublish(config.whipUrl, {
       mode: publishMode.value,
-      onDisplayEnded: () => stopPublishSafely("display-ended"),
+      onDisplayEnded: () => {
+        cancelledPublishAttempts.add(attemptId);
+        void stopPublishSafely("display-ended");
+      },
     });
 
-    publishHandle.value = handle;
+    // aborted ならここで止められる
+    ensureNotAborted();
+
+    if (cancelledPublishAttempts.has(attemptId)) {
+      cancelledPublishAttempts.delete(attemptId);
+      await tmpHandle.stop().catch(() => {});
+      tmpHandle = null;
+      return;
+    }
+
+    publishHandle.value = tmpHandle;
+    tmpHandle = null;
     needsRollback = false;
-    await loadStatus();
+
+    await loadStatusFor({ roomId: rid, token: tok }).catch(() => {});
   } catch (e) {
-    await onClickStartPublishCatch(e, needsRollback);
+    if (e instanceof PublishStartAbortedError) {
+      if (tmpHandle) await tmpHandle.stop().catch(() => {});
+      if (needsRollback) {
+        try {
+          await stopLive(rid, tok);
+          activePublishCtx.value = null;
+          lastPublishCtx.value = null;
+        } catch {
+          // 失敗時は ctx を残す（再試行可能にする）
+          errorMessage.value =
+            "配信開始を中断しましたが、サーバへの停止通知に失敗しました。配信停止を押して再試行してください。";
+        } finally {
+          await loadStatusFor({ roomId: rid, token: tok }).catch(() => {});
+        }
+      }
+      return;
+    }
+    await onClickStartPublishCatch(e, needsRollback, { roomId: rid, token: tok });
   } finally {
+    if (tmpHandle) await tmpHandle.stop().catch(() => {}); // ★保険（任意だが強い）
+    cancelledPublishAttempts.delete(attemptId);
     isBusyPublish.value = false;
   }
 };
 
 // エラー時の処理
-const onClickStartPublishCatch = async (e: unknown, rollback: boolean) => {
+const onClickStartPublishCatch = async (
+  e: unknown,
+  rollback: boolean,
+  ctx: { roomId: string; token: string },
+) => {
+  if (e instanceof PublishCancelledError && e.reason === "display-ended") {
+    try {
+      await stopLive(ctx.roomId, ctx.token);
+      activePublishCtx.value = null;
+      lastPublishCtx.value = null;
+    } catch {
+      errorMessage.value =
+        "画面共有が終了しましたが、サーバへの停止通知に失敗しました。配信停止を押して再試行してください。";
+    } finally {
+      await loadStatusFor(ctx).catch(() => {});
+    }
+    return;
+  }
   if (axios.isAxiosError(e)) {
     // 既存のままでOK
     const status = e.response?.status;
@@ -427,14 +524,17 @@ const onClickStartPublishCatch = async (e: unknown, rollback: boolean) => {
     errorMessage.value = "予期しないエラーが発生しました。";
   }
 
-  console.error(e);
-
   if (rollback) {
     try {
-      await stopLive(roomId.value, token.value);
-      await loadStatus(); // rollback後、UI状態を確実に戻す保険
-    } catch (stopErr) {
-      console.error("stopLive failed after start publish error", stopErr);
+      await stopLive(ctx.roomId, ctx.token);
+      activePublishCtx.value = null;
+      lastPublishCtx.value = null;
+    } catch (e) {
+      // 失敗時は ctx を残す（再試行できる）
+      errorMessage.value =
+        "配信開始に失敗し、サーバへの停止通知にも失敗しました。通信状況を確認し、配信停止を再度押してください。";
+    } finally {
+      await loadStatusFor(ctx).catch(() => {});
     }
   }
 };
@@ -476,17 +576,16 @@ const onClickStartWatch = async () => {
         errorMessage.value = "視聴開始に失敗しました。";
       }
     } else if (e instanceof WhepRequestError) {
-      const detail = e.body ? `（${e.body.slice(0, 180)}）` : "";
       if (e.status === 404 || e.status === 410) {
         errorMessage.value = "配信が終了しています。ページを再読み込みしてください。";
       } else if (e.status === 403) {
-        errorMessage.value = `視聴の認可に失敗しました。もう一度お試しください。${detail}`;
+        errorMessage.value = `視聴の認可に失敗しました。もう一度お試しください。(status=${e.status})`;
       } else if (e.status === 401) {
         errorMessage.value = "視聴権限がありません。ページを再読み込みしてください。";
       } else if (e.status === 400) {
         errorMessage.value = "視聴開始に失敗しました。（接続に問題があります）";
       } else {
-        errorMessage.value = `視聴開始に失敗しました。(status=${e.status})${detail}`;
+        errorMessage.value = `視聴開始に失敗しました。(status=${e.status})`;
       }
     } else {
       errorMessage.value = "視聴開始に失敗しました。";
@@ -510,7 +609,6 @@ const onClickStopWatch = async () => {
     }
   } catch (e: unknown) {
     errorMessage.value = "視聴停止に失敗しました。";
-    console.error(e);
   } finally {
     isBusyWatch.value = false;
   }
@@ -526,6 +624,13 @@ const handleLiveStatusChange = (payload: LiveStatusChangePayload) => {
   publisherName.value = payload.publisherName;
   publisherId.value = payload.publisherId;
   isAudioOnlyLive.value = payload.audioOnly ?? false;
+
+  if (!payload.isLive) {
+    activePublishCtx.value = null;
+    if (lastPublishCtx.value?.roomId === payload.room) {
+      lastPublishCtx.value = null;
+    }
+  }
 
   // 視聴側
   if (!payload.isLive && subscribeHandle.value) {
@@ -544,26 +649,17 @@ watch(
   () => userStore.currentRoom?.id,
   async (newRoomId, oldRoomId) => {
     if (newRoomId === oldRoomId) return;
+    abortInFlightPublishStart();
 
-    // まず前の部屋での配信・視聴セッションを完全に破棄
-    if (publishHandle.value) {
-      try {
-        await publishHandle.value.stop();
-      } catch {
-        // ログだけ残したければ console.error など
-      } finally {
-        publishHandle.value = null;
-      }
+    // 先に配信停止（サーバロック解除含む）
+    if (activePublishCtx.value || publishHandle.value || lastPublishCtx.value) {
+      await stopPublishSafely("room-change").catch(() => {});
     }
 
+    // 視聴停止
     if (subscribeHandle.value) {
-      try {
-        await subscribeHandle.value.stop();
-      } catch {
-        // 同上
-      } finally {
-        subscribeHandle.value = null;
-      }
+      await subscribeHandle.value.stop().catch(() => {});
+      subscribeHandle.value = null;
     }
 
     // 表示状態をリセット
@@ -609,11 +705,13 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  abortInFlightPublishStart();
   socketIOInstance.off("live_status_change", handleLiveStatusChange);
   restoreFavicon();
-  if (publishHandle.value) {
-    publishHandle.value.stop().catch(() => {});
-    publishHandle.value = null;
+  cancelledPublishAttempts.clear();
+
+  if (activePublishCtx.value || publishHandle.value || lastPublishCtx.value) {
+    void stopPublishSafely("unmount");
   }
 
   if (subscribeHandle.value) {

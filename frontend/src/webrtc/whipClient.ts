@@ -32,6 +32,14 @@ export class MediaAcquireError extends Error {
   }
 }
 
+export class PublishCancelledError extends Error {
+  reason: "display-ended";
+  constructor(reason: PublishCancelledError["reason"]) {
+    super(reason);
+    this.reason = reason;
+  }
+}
+
 const toMediaAcquireError = (e: unknown): MediaAcquireError => {
   if (e instanceof DOMException) {
     if (e.name === "NotAllowedError" || e.name === "SecurityError") {
@@ -157,51 +165,73 @@ export async function startWhipPublish(
 ): Promise<WhipPublishHandle> {
   const mode: PublishMode = options.mode ?? "camera";
 
+  let cancelReason: "none" | "display-ended" = "none";
+  const throwIfCancelled = (): void => {
+    if (cancelReason !== "none") throw new PublishCancelledError(cancelReason);
+  };
+
   let composedStream: MediaStream | null = null;
   let sourceStreams: MediaStream[] = [];
   let pc: RTCPeerConnection | null = null;
   let stopped = false;
   let resourceUrl: string | null = null;
+
   let displayTrackEndedHandler: (() => void) | null = null;
   let displayTrack: MediaStreamTrack | undefined;
+
   const senders: RTCRtpSender[] = [];
 
+  // ★返却後にも呼べる stop の実体を外に置く
+  let stopImpl: (() => Promise<void>) | null = null;
+
   try {
-    // 1. メディア取得（必要に応じて合成）
     const streamResult = await getStreamForMode(mode);
     composedStream = streamResult.composed;
     sourceStreams = streamResult.sources;
     displayTrack = streamResult.displayVideoTrack;
 
-    if (displayTrack && options.onDisplayEnded) {
-      displayTrackEndedHandler = () => options.onDisplayEnded?.();
+    if (displayTrack !== undefined) {
+      displayTrackEndedHandler = () => {
+        cancel: {
+          cancelReason = "display-ended";
+        }
+
+        // UI通知（あれば）
+        try {
+          options.onDisplayEnded?.();
+        } catch {
+          // ignore
+        }
+
+        // ★返却後なら内部で止められる
+        if (stopImpl) void stopImpl();
+        // 返却前なら throwIfCancelled のチェックポイントで落ちる
+      };
+
       displayTrack.addEventListener("ended", displayTrackEndedHandler, { once: true });
     }
 
-    // 2. RTCPeerConnection 準備
-    pc = new RTCPeerConnection({
-      iceServers: [], // SRS ICE-lite 前提なら空でOK
-    });
+    throwIfCancelled();
 
-    composedStream.getTracks().forEach((track) => {
-      // replaceTrack で後から差し替える可能性があるので保持しておく
-      const sender = pc?.addTrack(track, composedStream as MediaStream);
-      if (sender) senders.push(sender);
-    });
+    pc = new RTCPeerConnection({ iceServers: [] });
 
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: false,
-      offerToReceiveVideo: false,
-    });
+    for (const track of composedStream.getTracks()) {
+      const sender = pc.addTrack(track, composedStream);
+      senders.push(sender);
+    }
+
+    const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+    throwIfCancelled();
+
     await pc.setLocalDescription(offer);
+    throwIfCancelled();
+
     await waitForIceGatheringComplete(pc, 3000);
+    throwIfCancelled();
 
     const res = await fetch(whipUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/sdp",
-        Accept: "application/sdp",
-      },
+      headers: { "Content-Type": "application/sdp", Accept: "application/sdp" },
       body: pc.localDescription?.sdp ?? offer.sdp ?? "",
     });
 
@@ -213,34 +243,51 @@ export async function startWhipPublish(
 
     resourceUrl = createdResourceUrl;
 
+    if (cancelReason !== "none") {
+      await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
+      throw new PublishCancelledError(cancelReason);
+    }
+
     await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: answerSdp }));
+    throwIfCancelled();
 
     const stop = async () => {
       if (stopped) return;
       stopped = true;
-      if (displayTrack && displayTrackEndedHandler) {
+
+      if (displayTrack !== undefined && displayTrackEndedHandler != null) {
         displayTrack.removeEventListener("ended", displayTrackEndedHandler);
       }
+
       try {
-        if (resourceUrl !== null && resourceUrl !== "") {
+        if (resourceUrl != null && resourceUrl !== "") {
           await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
         }
       } finally {
         pc?.close();
-        sourceStreams.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+
+        // ★任意: composed も止める（将来mixした時に安全）
+        if (composedStream) for (const t of composedStream.getTracks()) t.stop();
+
+        for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
       }
     };
 
+    // ★ここで返却後 stop を可能にする
+    stopImpl = stop;
+
+    throwIfCancelled();
     return { stop, mode, senders };
   } catch (e) {
-    if (displayTrack && displayTrackEndedHandler) {
+    if (displayTrack !== undefined && displayTrackEndedHandler != null) {
       displayTrack.removeEventListener("ended", displayTrackEndedHandler);
     }
-    if (!stopped && resourceUrl != null) {
+    if (!stopped && resourceUrl != null && resourceUrl !== "") {
       await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
     }
     pc?.close();
-    sourceStreams.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+    if (composedStream) for (const t of composedStream.getTracks()) t.stop();
+    for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
     throw e;
   }
 }
