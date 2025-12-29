@@ -116,6 +116,31 @@ import {
   type WhepSubscribeHandle,
 } from "@/webrtc/whepClient";
 import PrimeButton from "primevue/button";
+const isProd = import.meta.env.PROD;
+
+type SafeErr = { name?: string; message?: string; status?: number; code?: string };
+
+const toSafeErr = (e: unknown): SafeErr => {
+  if (axios.isAxiosError(e)) {
+    return {
+      name: e.name,
+      message: e.message,
+      status: e.response?.status,
+      code: e.response?.data?.error,
+    };
+  }
+  if (e instanceof Error) return { name: e.name, message: e.message };
+  return { message: String(e) };
+};
+
+const logErrorSafe = (label: string, e: unknown) => {
+  const safe = toSafeErr(e);
+  if (isProd) {
+    console.error(label, safe); // 本番は要約のみ
+  } else {
+    console.error(label, e); // DEVは全文
+  }
+};
 
 const userStore = useUserStore();
 const roomStore = useRoomStore();
@@ -407,7 +432,7 @@ const stopPublishSafely = async (reason: string, opts: StopPublishOpts = {}): Pr
         await loadStatus();
       }
     } catch (e) {
-      console.error("failed to sync live status after stop", e);
+      logErrorSafe("loadStatusFor failed in stopPublishSafely", e);
       if (uiPolicy === "user-action" && errorMessage.value == null) {
         appendErrorMessage("停止後の状態更新に失敗しました。ページ再読み込みで確認してください。");
       }
@@ -708,7 +733,7 @@ watch(
       try {
         await loadStatus();
       } catch (e) {
-        console.error("failed to load live status after room change", e);
+        logErrorSafe("failed to load live status on room change", e);
       }
     }
   },
@@ -726,7 +751,7 @@ watch(
   (enabled) => {
     if (!enabled) return;
     if (!roomId.value || !token.value) return;
-    loadStatus().catch((e) => console.error("failed to load live status", e));
+    loadStatus().catch((e) => logErrorSafe("failed to load live status", e));
   },
   { immediate: true },
 );
@@ -734,7 +759,7 @@ watch(
 onMounted(() => {
   socketIOInstance.on("live_status_change", handleLiveStatusChange);
   if (liveEnabled.value) {
-    loadStatus().catch((e) => console.error("failed to load live status on mount", e));
+    loadStatus().catch((e) => logErrorSafe("failed to load live status on mount", e));
   }
 });
 
