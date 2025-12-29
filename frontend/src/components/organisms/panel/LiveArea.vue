@@ -256,8 +256,6 @@ const canStartPublish = computed(() => {
     !isBusyPublish.value &&
     !isLive.value &&
     publishHandle.value === null &&
-    activePublishCtx.value === null &&
-    lastPublishCtx.value === null && // ← 任意：まず停止で回復させる
     !!roomId.value &&
     !!token.value
   );
@@ -416,23 +414,29 @@ const onClickStartPublish = async () => {
     tmpHandle = await startWhipPublish(config.whipUrl, {
       mode: publishMode.value,
       onDisplayEnded: () => {
+        if (publishHandle.value != null) {
+          void stopPublishSafely("display-ended");
+          return;
+        }
         cancelledPublishAttempts.add(attemptId);
-        void stopPublishSafely("display-ended");
       },
     });
 
     // aborted ならここで止められる
     ensureNotAborted();
 
-    if (cancelledPublishAttempts.has(attemptId)) {
-      cancelledPublishAttempts.delete(attemptId);
-      await tmpHandle.stop().catch(() => {});
-      tmpHandle = null;
-      return;
-    }
-
+    // ★ここで先に publishHandle に入れてレース窓を潰す
     publishHandle.value = tmpHandle;
     tmpHandle = null;
+
+    if (cancelledPublishAttempts.has(attemptId)) {
+      cancelledPublishAttempts.delete(attemptId);
+      await publishHandle.value.stop().catch(() => {});
+      publishHandle.value = null;
+
+      throw new PublishCancelledError("display-ended");
+    }
+
     needsRollback = false;
 
     await loadStatusFor({ roomId: rid, token: tok }).catch(() => {});
@@ -458,7 +462,10 @@ const onClickStartPublish = async () => {
   } finally {
     if (tmpHandle) await tmpHandle.stop().catch(() => {}); // ★保険（任意だが強い）
     cancelledPublishAttempts.delete(attemptId);
-    isBusyPublish.value = false;
+    // ★ stopPublishSafely が走ってるなら、busy解除しない
+    if (!isStoppingPublish.value) {
+      isBusyPublish.value = false;
+    }
   }
 };
 

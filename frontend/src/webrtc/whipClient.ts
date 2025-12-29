@@ -165,6 +165,7 @@ export async function startWhipPublish(
 ): Promise<WhipPublishHandle> {
   const mode: PublishMode = options.mode ?? "camera";
 
+  // 呼び出し単位のキャンセル状態にする
   let cancelReason: "none" | "display-ended" = "none";
   const throwIfCancelled = (): void => {
     if (cancelReason !== "none") throw new PublishCancelledError(cancelReason);
@@ -175,14 +176,9 @@ export async function startWhipPublish(
   let pc: RTCPeerConnection | null = null;
   let stopped = false;
   let resourceUrl: string | null = null;
-
   let displayTrackEndedHandler: (() => void) | null = null;
   let displayTrack: MediaStreamTrack | undefined;
-
   const senders: RTCRtpSender[] = [];
-
-  // ★返却後にも呼べる stop の実体を外に置く
-  let stopImpl: (() => Promise<void>) | null = null;
 
   try {
     const streamResult = await getStreamForMode(mode);
@@ -190,24 +186,16 @@ export async function startWhipPublish(
     sourceStreams = streamResult.sources;
     displayTrack = streamResult.displayVideoTrack;
 
-    if (displayTrack !== undefined) {
+    //  listener はここでOK（strict-boolean対応）
+    if (displayTrack !== undefined && options.onDisplayEnded != null) {
       displayTrackEndedHandler = () => {
-        cancel: {
-          cancelReason = "display-ended";
-        }
-
-        // UI通知（あれば）
+        cancelReason = "display-ended";
         try {
           options.onDisplayEnded?.();
         } catch {
-          // ignore
+          // UI側例外でwhipClientのcleanupを壊さない
         }
-
-        // ★返却後なら内部で止められる
-        if (stopImpl) void stopImpl();
-        // 返却前なら throwIfCancelled のチェックポイントで落ちる
       };
-
       displayTrack.addEventListener("ended", displayTrackEndedHandler, { once: true });
     }
 
@@ -241,6 +229,7 @@ export async function startWhipPublish(
       "whip",
     );
 
+    // ここが超重要：先に代入して “DELETEできる状態” にする
     resourceUrl = createdResourceUrl;
 
     if (cancelReason !== "none") {
@@ -265,28 +254,21 @@ export async function startWhipPublish(
         }
       } finally {
         pc?.close();
-
-        // ★任意: composed も止める（将来mixした時に安全）
-        if (composedStream) for (const t of composedStream.getTracks()) t.stop();
-
         for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
       }
     };
 
-    // ★ここで返却後 stop を可能にする
-    stopImpl = stop;
-
     throwIfCancelled();
+
     return { stop, mode, senders };
   } catch (e) {
     if (displayTrack !== undefined && displayTrackEndedHandler != null) {
       displayTrack.removeEventListener("ended", displayTrackEndedHandler);
     }
-    if (!stopped && resourceUrl != null && resourceUrl !== "") {
+    if (!stopped && resourceUrl != null) {
       await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
     }
     pc?.close();
-    if (composedStream) for (const t of composedStream.getTracks()) t.stop();
     for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
     throw e;
   }
