@@ -19,6 +19,7 @@ import { Position } from "../domain/position";
 import { Direction, DirectionValue } from "../domain/direction";
 import { Status } from "../domain/status";
 import { Character } from "../domain/character";
+import { send } from "process";
 
 let presenter: UserPresenter;
 let client: IClientCommunicator;
@@ -53,6 +54,8 @@ const ServerMock = vi.fn().mockImplementation(() => {
     sendAWAKE: vi.fn(),
     sendCOUNT: vi.fn(),
     sendUsers: vi.fn(),
+    sendLiveStatusChange: vi.fn(),
+    sendLiveStatusChangeToSocket: vi.fn(),
   };
 });
 
