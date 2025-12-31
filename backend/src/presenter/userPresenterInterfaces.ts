@@ -29,6 +29,10 @@ export interface IServerCommunicator {
   sendCOUNT(param: COUNTResponse): void;
   sendUsers(users: USER[], to: string | null): void;
   sendLiveStatusChange(param: LiveStatusChangePayload, to: string): void;
+  sendLiveStatusChangeToSocket(
+    param: LiveStatusChangePayload,
+    socketId: string
+  ): void;
 }
 
 // クライアントからのイベントを定義したインターフェイス

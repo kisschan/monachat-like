@@ -89,4 +89,11 @@ export class ServerCommunicator implements IServerCommunicator {
   sendLiveStatusChange(param: LiveStatusChangePayload, to: string): void {
     this.server.in(to).emit("live_status_change", param);
   }
+
+  sendLiveStatusChangeToSocket(
+    param: LiveStatusChangePayload,
+    socketId: string
+  ): void {
+    this.server.to(socketId).emit("live_status_change", param); //個別socket宛
+  }
 }
