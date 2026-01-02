@@ -15,7 +15,10 @@ import { FourChanTripper, HashTripper } from "./domain/tripper";
 import moment from "moment";
 import { liveAuth } from "./middleware/liveAuth";
 import { Account } from "./entity/account";
-import { LiveStateRepository } from "./infrastructure/liveState";
+import {
+  LiveStateRepository,
+  RoomLiveStateInfo,
+} from "./infrastructure/liveState";
 import { isLiveConfigured, getWhipBase } from "./config/liveConfig";
 import * as crypto from "crypto";
 import {
@@ -23,7 +26,9 @@ import {
   verifyStreamTokenV1,
   type StreamTokenScope,
 } from "./live/streamTokenV1";
-import { TokenVerifyResult } from "./live/streamTokenV1";
+
+import { liveAuthAnyRoom } from "./middleware/liveAuthAnyRoom";
+import { Room } from "./protocol/room";
 
 const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
 const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
@@ -453,7 +458,6 @@ app.get("/internal/live/whip-auth", (req, res) => {
       audioOnly: liveStateRepo.get(result.roomId).audioOnly,
     });
 
-    // 全体一覧用（あなたが実装しているなら）
     ioServer.emit("live_rooms_changed", {
       room: result.roomId,
       isLive: true,
@@ -490,6 +494,30 @@ app.get("/internal/live/whep-auth", (req, res) => {
   }
 
   return res.status(200).end();
+});
+
+app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
+  const account = (req as any).account as Account | undefined;
+  if (!account) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  const liveEntries = liveStateRepo.listLiveEntries();
+
+  const result: RoomLiveStateInfo[] = liveEntries.map(({ roomId, state }) => {
+    const publisher = state.publisherId
+      ? accountRepo.fetchUser(state.publisherId, roomId)
+      : null;
+
+    return {
+      roomName: roomId,
+      isLive: state.publisherId != null,
+      publisherName: publisher?.name ?? null,
+      audioOnly: state.publisherId != null ? state.audioOnly ?? false : false,
+    };
+  });
+
+  res.status(200).json(result);
 });
 
 setInterval(() => {

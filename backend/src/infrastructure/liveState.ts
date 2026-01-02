@@ -9,6 +9,13 @@ export type LiveRoomState = {
   lastHeartbeatMs: number | null; // starting lock時刻/心拍にも流用
 };
 
+export type RoomLiveStateInfo = {
+  roomName: string;
+  publisherName: string | null;
+  isLive: boolean;
+  audioOnly: boolean;
+};
+
 export class LiveStateRepository {
   private static instance: LiveStateRepository;
   private state: Record<string, LiveRoomState> = {};
