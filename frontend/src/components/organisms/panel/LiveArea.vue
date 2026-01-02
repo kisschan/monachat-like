@@ -98,22 +98,25 @@
 
   <section v-if="token" class="live-rooms-area">
     <Accordion :active-index="0">
-      <AccordionTab :header="`配信一覧（${visibleLiveRooms.length}）`">
-        <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
-        <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
-        <p v-else-if="visibleLiveRooms.length === 0 && !hasLoadedOnce" class="hint">準備中…</p>
-        <p v-else-if="visibleLiveRooms.length === 0" class="hint">配信中の部屋はありません。</p>
-        <ul v-else class="live-rooms">
-          <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
-            <div class="live-rooms__room">{{ r.room }}</div>
+      <AccordionPanel value="0">
+        <AccordionHeader>配信中の部屋一覧({{ visibleLiveRooms.length }})</AccordionHeader>
+        <AccordionContent>
+          <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
+          <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
+          <p v-else-if="visibleLiveRooms.length === 0 && !hasLoadedOnce" class="hint">準備中…</p>
+          <p v-else-if="visibleLiveRooms.length === 0" class="hint">配信中の部屋はありません。</p>
+          <ul v-else class="live-rooms">
+            <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
+              <div class="live-rooms__room">{{ r.room }}</div>
 
-            <div class="live-rooms__meta">
-              <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
-              <span v-if="r.audioOnly">（音声のみ）</span>
-            </div>
-          </li>
-        </ul>
-      </AccordionTab>
+              <div class="live-rooms__meta">
+                <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
+                <span v-if="r.audioOnly">（音声のみ）</span>
+              </div>
+            </li>
+          </ul>
+        </AccordionContent>
+      </AccordionPanel>
     </Accordion>
   </section>
 </template>
@@ -144,7 +147,9 @@ import {
 } from "@/webrtc/whepClient";
 import PrimeButton from "primevue/button";
 import Accordion from "primevue/accordion";
-import AccordionTab from "primevue/accordiontab";
+import AccordionPanel from "primevue/accordionpanel";
+import AccordionContent from "primevue/accordioncontent";
+import AccordionHeader from "primevue/accordionheader";
 const isProd = import.meta.env.PROD;
 const API_HOST = ((import.meta.env.VITE_APP_API_HOST as string | undefined) ?? "").replace(
   /\/$/,
@@ -967,6 +972,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 12px;
   padding: 14px;
+  height: 100%;
 }
 
 .live-card h3 {
