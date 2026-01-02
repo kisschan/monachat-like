@@ -418,6 +418,13 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
     audioOnly: false, // ★ 配信終了時は false にしておく
   });
 
+  ioServer.emit("live_rooms_changed", {
+    room: room,
+    isLive: false,
+    publisherName: null,
+    audioOnly: false, // ★ 配信終了時は false にしておく
+  });
+
   return res.json({ ok: true });
 });
 
@@ -502,22 +509,31 @@ app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
     return res.status(401).json({ error: "unauthorized" });
   }
 
-  const liveEntries = liveStateRepo.listLiveEntries();
+  let liveEntries: { roomId: string; state: any }[];
+  try {
+    liveEntries = liveStateRepo.listLiveEntries();
+  } catch (e) {
+    logger.error("listLiveEntries failed", e);
+    return res.status(500).json({ error: "internal" });
+  }
 
-  const result: RoomLiveStateInfo[] = liveEntries.map(({ roomId, state }) => {
-    const publisher = state.publisherId
-      ? accountRepo.fetchUser(state.publisherId, roomId)
-      : null;
+  const result = liveEntries.map(({ roomId, state }) => {
+    const isLive = state.phase === "live"; // ★ ここ重要（starting を live 扱いしない）
+
+    const publisher =
+      isLive && state.publisherId
+        ? accountRepo.fetchUser(state.publisherId, roomId)
+        : null;
 
     return {
-      roomName: roomId,
-      isLive: state.publisherId != null,
+      room: roomId, // ★ roomName → room
+      isLive, // ★ phase で判定
       publisherName: publisher?.name ?? null,
-      audioOnly: state.publisherId != null ? state.audioOnly ?? false : false,
+      audioOnly: isLive ? !!state.audioOnly : false,
     };
   });
 
-  res.status(200).json(result);
+  return res.status(200).json(result);
 });
 
 setInterval(() => {
