@@ -93,6 +93,31 @@
       </section>
     </section>
   </section>
+
+  <!-- 配信一覧（全体）: この部屋が liveEnabled=false でも見える -->
+
+  <section v-if="token" class="live-rooms-area">
+    <Accordion :active-index="0">
+      <AccordionTab :header="`配信一覧（${visibleLiveRooms.length}）`">
+        <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
+
+        <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
+
+        <p v-else-if="visibleLiveRooms.length === 0" class="hint">配信中の部屋はありません。</p>
+
+        <ul v-else class="live-rooms">
+          <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
+            <div class="live-rooms__room">{{ r.room }}</div>
+
+            <div class="live-rooms__meta">
+              <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
+              <span v-if="r.audioOnly">（音声のみ）</span>
+            </div>
+          </li>
+        </ul>
+      </AccordionTab>
+    </Accordion>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -116,6 +141,8 @@ import {
   type WhepSubscribeHandle,
 } from "@/webrtc/whepClient";
 import PrimeButton from "primevue/button";
+import Accordion from "primevue/accordion";
+import AccordionTab from "primevue/accordiontab";
 const isProd = import.meta.env.PROD;
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
@@ -148,6 +175,47 @@ const roomStore = useRoomStore();
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
 const myId = computed(() => userStore.myID);
+
+// =====================
+// 配信一覧（全体）
+// =====================
+type LiveRoomListItem = {
+  room: string;
+  isLive: boolean;
+  publisherName: string | null; // raw（trimしない）
+  audioOnly: boolean;
+};
+
+const liveRooms = ref<LiveRoomListItem[]>([]);
+const isBusyRoomsList = ref(false);
+const roomsListError = ref<string | null>(null);
+let roomsListSeq = 0;
+
+const visibleLiveRooms = computed(() => liveRooms.value.filter((x) => x.isLive));
+
+const loadLiveRooms = async (): Promise<void> => {
+  const tok = token.value;
+  if (!tok) return;
+
+  const seq = ++roomsListSeq;
+  isBusyRoomsList.value = true;
+  roomsListError.value = null;
+
+  try {
+    const res = await axios.get<LiveRoomListItem[]>("/api/live/rooms", {
+      headers: { "X-Monachat-Token": tok },
+    });
+    if (seq !== roomsListSeq) return; // 競合抑止（古い応答を捨てる）
+    liveRooms.value = Array.isArray(res.data) ? res.data : [];
+  } catch (e) {
+    logErrorSafe("failed to load live rooms", e);
+    if (seq !== roomsListSeq) return;
+    liveRooms.value = [];
+    roomsListError.value = "配信一覧の取得に失敗しました。";
+  } finally {
+    if (seq === roomsListSeq) isBusyRoomsList.value = false;
+  }
+};
 
 // 共通状態
 const isLive = ref(false);
@@ -709,7 +777,7 @@ watch(
   async (newRoomId, oldRoomId) => {
     if (newRoomId === oldRoomId) return;
     abortInFlightPublishStart();
-
+    void loadLiveRooms().catch(() => {});
     // 先に配信停止（サーバロック解除含む）
     if (activePublishCtx.value || publishHandle.value || lastPublishCtx.value) {
       await stopPublishSafely("room-change", { uiPolicy: "user-action" }).catch(() => {});
@@ -761,7 +829,20 @@ onMounted(() => {
   if (liveEnabled.value) {
     loadStatus().catch((e) => logErrorSafe("failed to load live status on mount", e));
   }
+
+  // token が既にあるなら初回ロード
+  void loadLiveRooms().catch(() => {});
 });
+
+// token が遅れて入るケース（初期化タイミング差）を拾う
+watch(
+  () => token.value,
+  (tok) => {
+    if (!tok) return;
+    void loadLiveRooms().catch(() => {});
+  },
+  { immediate: true },
+);
 
 onBeforeUnmount(() => {
   abortInFlightPublishStart();
@@ -857,5 +938,37 @@ onBeforeUnmount(() => {
   font-size: 0.8rem;
   opacity: 0.8;
   margin-top: 10px;
+}
+
+.live-rooms-area {
+  margin: 10px 0 12px;
+}
+
+.live-rooms {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.live-rooms__item {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.live-rooms__room {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.live-rooms__meta {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>

@@ -4,6 +4,13 @@ export type LiveRoomState = {
   streamKey: string | null;
 };
 
+export type RoomsLiveInfoStatePayload = {
+  room: string;
+  isLive: boolean;
+  publisherName: string | null; // raw（trimしない）
+  audioOnly: boolean; // 安全に公開できる
+};
+
 export class LiveStateRepository {
   private static instance: LiveStateRepository;
   private state: Record<string, LiveRoomState> = {};
@@ -41,6 +48,15 @@ export class LiveStateRepository {
       audioOnly: false,
       streamKey: null,
     };
+  }
+
+  // 追加するだけ（既存挙動は変えない）
+  listLiveEntries(): { roomId: string; state: LiveRoomState }[] {
+    const entries = Object.entries(this.state)
+      .filter(([, s]) => s.publisherId != null)
+      .map(([roomId, s]) => ({ roomId, state: { ...s } })); // clone
+    entries.sort((a, b) => a.roomId.localeCompare(b.roomId)); // 安定順序
+    return entries;
   }
 
   findByStreamKey(

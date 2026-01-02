@@ -15,7 +15,10 @@ import { FourChanTripper, HashTripper } from "./domain/tripper";
 import moment from "moment";
 import { liveAuth } from "./middleware/liveAuth";
 import { Account } from "./entity/account";
-import { LiveStateRepository } from "./infrastructure/liveState";
+import {
+  LiveStateRepository,
+  RoomsLiveInfoStatePayload,
+} from "./infrastructure/liveState";
 import { isLiveConfigured, getWhipBase } from "./config/liveConfig";
 import * as crypto from "crypto";
 import {
@@ -24,6 +27,8 @@ import {
   type StreamTokenScope,
 } from "./live/streamTokenV1";
 import { TokenVerifyResult } from "./live/streamTokenV1";
+import { Room } from "./protocol/room";
+import { liveAuthAnyRoom } from "./middleware/liveAuthAnyRoom";
 
 const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
 const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
@@ -465,6 +470,34 @@ app.get("/internal/live/whep-auth", (req, res) => {
   }
 
   return res.status(200).end();
+});
+
+const accountRepo = AccountRepository.getInstance();
+
+app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
+  const account = (req as any).account as Account | undefined;
+  if (!account) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  const liveEntries = liveStateRepo.listLiveEntries();
+
+  const result: RoomsLiveInfoStatePayload[] = liveEntries.map(
+    ({ roomId, state }) => {
+      const publisher = state.publisherId
+        ? accountRepo.fetchUser(state.publisherId, roomId)
+        : null;
+
+      return {
+        room: roomId,
+        isLive: state.publisherId != null,
+        publisherName: publisher?.name ?? null,
+        audioOnly: state.publisherId != null ? state.audioOnly ?? false : false,
+      };
+    }
+  );
+
+  res.status(200).json(result);
 });
 
 // サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
