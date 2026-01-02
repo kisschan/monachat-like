@@ -100,11 +100,9 @@
     <Accordion :active-index="0">
       <AccordionTab :header="`配信一覧（${visibleLiveRooms.length}）`">
         <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
-
         <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
-
+        <p v-else-if="!hasLoadedOnce" class="hint">準備中…</p>
         <p v-else-if="visibleLiveRooms.length === 0" class="hint">配信中の部屋はありません。</p>
-
         <ul v-else class="live-rooms">
           <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
             <div class="live-rooms__room">{{ r.room }}</div>
@@ -148,6 +146,11 @@ import PrimeButton from "primevue/button";
 import Accordion from "primevue/accordion";
 import AccordionTab from "primevue/accordiontab";
 const isProd = import.meta.env.PROD;
+const API_HOST = ((import.meta.env.VITE_APP_API_HOST as string | undefined) ?? "").replace(
+  /\/$/,
+  "",
+);
+const apiUrl = (path: string) => (API_HOST ? `${API_HOST}${path}` : path);
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
 
@@ -194,28 +197,43 @@ const liveRooms = ref<LiveRoomListItem[]>([]);
 const isBusyRoomsList = ref(false);
 const roomsListError = ref<string | null>(null);
 let roomsListSeq = 0;
+let roomsListUnauthorized = 0;
 
 const visibleLiveRooms = computed(() => liveRooms.value.filter((x) => x.isLive));
 
-const loadLiveRooms = async (): Promise<void> => {
-  const tok = token.value;
-  if (!tok) return;
+const loadLiveRooms = async (): Promise<boolean> => {
+  if (!isReadyToLoadLiveRooms.value) return false;
 
   const seq = ++roomsListSeq;
   isBusyRoomsList.value = true;
   roomsListError.value = null;
 
   try {
-    const res = await axios.get<LiveRoomListItem[]>("/api/live/rooms", {
-      headers: { "X-Monachat-Token": tok },
+    const res = await axios.get<LiveRoomListItem[]>(apiUrl("/api/live/rooms"), {
+      headers: { "X-Monachat-Token": token.value },
     });
-    if (seq !== roomsListSeq) return; // 競合抑止（古い応答を捨てる）
-    liveRooms.value = Array.isArray(res.data) ? res.data : [];
+    if (seq !== roomsListSeq) return false; // 競合抑止（古い応答を捨てる）
+    roomsListUnauthorized = 0;
+    const list = Array.isArray(res.data) ? res.data : [];
+    liveRooms.value = list.slice().sort((a, b) => a.room.localeCompare(b.room)); // ★初回もソート
+    return true;
   } catch (e) {
     logErrorSafe("failed to load live rooms", e);
-    if (seq !== roomsListSeq) return;
-    liveRooms.value = [];
+    if (seq !== roomsListSeq) return false;
+    const safe = toSafeErr(e);
+    if (safe.status === 401) {
+      roomsListUnauthorized++;
+      // 最初の数回は「準備中」扱いで黙る
+      if (roomsListUnauthorized <= 3) {
+        roomsListError.value = null;
+        return false;
+      }
+      roomsListError.value =
+        "配信一覧の取得に失敗しました（認証未確立）。再接続または再読み込みしてください。";
+      return false;
+    }
     roomsListError.value = "配信一覧の取得に失敗しました。";
+    return false;
   } finally {
     if (seq === roomsListSeq) isBusyRoomsList.value = false;
   }
@@ -228,6 +246,11 @@ const publisherId = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
 const publishMode = ref<PublishMode>("camera");
 const screenAudioNotice = ref<string | null>(null);
+const isReadyToLoadLiveRooms = computed(() => {
+  return !!token.value && !!roomId.value;
+});
+
+const hasLoadedOnce = ref(false);
 
 // 配信者側
 const isBusyPublish = ref(false);
@@ -855,12 +878,20 @@ watch(
   { immediate: true },
 );
 
+watch(token, () => {
+  roomsListUnauthorized = 0;
+  roomsListError.value = null;
+  isBusyRoomsList.value = false;
+  liveRooms.value = [];
+  hasLoadedOnce.value = false;
+});
+
 const onSocketConnect = () => {
-  void loadLiveRooms().catch(() => {});
+  if (isReadyToLoadLiveRooms.value) void loadLiveRooms().catch(() => {});
 };
 
 const onVisibilityChange = () => {
-  if (document.visibilityState === "visible") {
+  if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
     void loadLiveRooms().catch(() => {});
   }
 };
@@ -873,17 +904,17 @@ onMounted(() => {
   if (liveEnabled.value) {
     loadStatus().catch((e) => logErrorSafe("failed to load live status on mount", e));
   }
-
-  // token が既にあるなら初回ロード
-  void loadLiveRooms().catch(() => {});
 });
 
-// token が遅れて入るケース（初期化タイミング差）を拾う
+// token と roomId が揃ったら配信一覧をロード
 watch(
-  () => token.value,
-  (tok) => {
-    if (!tok) return;
-    void loadLiveRooms().catch(() => {});
+  isReadyToLoadLiveRooms,
+  (ready) => {
+    if (ready) {
+      void loadLiveRooms().then((ok) => {
+        if (ok) hasLoadedOnce.value = true;
+      });
+    }
   },
   { immediate: true },
 );

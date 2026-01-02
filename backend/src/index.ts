@@ -532,6 +532,8 @@ app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
     };
   });
 
+  result.sort((a, b) => String(a.room).localeCompare(String(b.room)));
+
   return res.status(200).json(result);
 });
 
