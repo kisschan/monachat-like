@@ -15,10 +15,7 @@ import { FourChanTripper, HashTripper } from "./domain/tripper";
 import moment from "moment";
 import { liveAuth } from "./middleware/liveAuth";
 import { Account } from "./entity/account";
-import {
-  LiveStateRepository,
-  RoomsLiveInfoStatePayload,
-} from "./infrastructure/liveState";
+import { LiveStateRepository } from "./infrastructure/liveState";
 import { isLiveConfigured, getWhipBase } from "./config/liveConfig";
 import * as crypto from "crypto";
 import {
@@ -27,8 +24,6 @@ import {
   type StreamTokenScope,
 } from "./live/streamTokenV1";
 import { TokenVerifyResult } from "./live/streamTokenV1";
-import { Room } from "./protocol/room";
-import { liveAuthAnyRoom } from "./middleware/liveAuthAnyRoom";
 
 const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
 const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
@@ -268,7 +263,7 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
   const state = liveStateRepo.get(room);
   const repo = AccountRepository.getInstance();
 
-  if (!state.publisherId) {
+  if (state.phase !== "live" || !state.publisherId) {
     return res.json({
       isLive: false,
       publisherId: null,
@@ -287,6 +282,8 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
   });
 });
 
+const STARTING_TTL_MS = 90_000;
+
 app.post("/api/live/:room/start", liveAuth, (req, res) => {
   if (!isLiveConfigured || !isWhipTokenSecretValid) {
     res.status(503).json({ error: "live-not-configured" });
@@ -294,6 +291,10 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
   }
 
   const room = req.params.room;
+
+  // ★ stale starting を除去してから判定に入る
+  liveStateRepo.clearIfExpiredStarting(room, STARTING_TTL_MS);
+
   const account = (req as any).account as Account;
   const state = liveStateRepo.get(room);
 
@@ -303,39 +304,26 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
     return res.status(403).json({ error: "live-disabled" });
   }
 
-  if (state.publisherId && !isSameAccount) {
+  // ★ starting/live で他者ロック中なら拒否
+  const lockedByOther =
+    state.phase !== "idle" && state.publisherId != null && !isSameAccount;
+
+  if (lockedByOther) {
     return res.status(409).json({ error: "already-live" });
   }
 
-  // ★ ここで配信モードを受け取る（デフォルト false = 映像＋音声）
   const audioOnly = !!req.body?.audioOnly;
 
-  // ★ 同じアカウントが再度 /start したときは既存の streamKey を再利用
   const streamKey =
     isSameAccount && state.streamKey
       ? state.streamKey
-      : crypto.randomBytes(16).toString("hex"); // 32文字hex
+      : crypto.randomBytes(16).toString("hex");
 
-  liveStateRepo.set(room, account.id, audioOnly, streamKey);
-
-  ioServer.to(room).emit("live_status_change", {
-    room,
-    isLive: true,
-    publisherId: account.id,
-    publisherName: account.character.avatar.name.value,
-    audioOnly, // ★ 追加
-  });
-
-  // 全体（一覧用）：安全なフィールドだけで通知
-  ioServer.emit("live_rooms_changed", {
-    room,
-    isLive: true,
-    publisherName: account.character.avatar.name.value, // raw
-    audioOnly,
-  });
+  liveStateRepo.setStarting(room, account.id, audioOnly, streamKey);
 
   return res.json({ ok: true });
 });
+
 app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   if (!isLiveConfigured || !isWhipTokenSecretValid) {
     return res.status(503).json({ error: "live-not-configured" });
@@ -425,16 +413,10 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
     audioOnly: false, // ★ 配信終了時は false にしておく
   });
 
-  // 全体（一覧用）：安全なフィールドだけで通知
-  ioServer.emit("live_rooms_changed", {
-    room,
-    isLive: false,
-    publisherName: account.character.avatar.name.value, // raw
-    audioOnly: false, // 配信終了時は false にしておく
-  });
-
   return res.json({ ok: true });
 });
+
+const accountRepo = AccountRepository.getInstance();
 
 app.get("/internal/live/whip-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
@@ -456,6 +438,28 @@ app.get("/internal/live/whip-auth", (req, res) => {
   if (!result.ok) {
     res.setHeader("X-Auth-Reason", result.reason);
     return res.status(403).end();
+  }
+
+  const changed = liveStateRepo.markLive(result.roomId);
+
+  if (changed) {
+    const publisher = accountRepo.fetchUser(result.publisherId, result.roomId);
+
+    ioServer.to(result.roomId).emit("live_status_change", {
+      room: result.roomId,
+      isLive: true,
+      publisherId: result.publisherId,
+      publisherName: publisher?.name ?? null,
+      audioOnly: liveStateRepo.get(result.roomId).audioOnly,
+    });
+
+    // 全体一覧用（あなたが実装しているなら）
+    ioServer.emit("live_rooms_changed", {
+      room: result.roomId,
+      isLive: true,
+      publisherName: publisher?.name ?? null,
+      audioOnly: liveStateRepo.get(result.roomId).audioOnly,
+    });
   }
 
   return res.status(200).end();
@@ -488,33 +492,24 @@ app.get("/internal/live/whep-auth", (req, res) => {
   return res.status(200).end();
 });
 
-const accountRepo = AccountRepository.getInstance();
-
-app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
-  const account = (req as any).account as Account | undefined;
-  if (!account) {
-    return res.status(401).json({ error: "unauthorized" });
+setInterval(() => {
+  const clearedRooms = liveStateRepo.sweepExpiredStarting(90_000);
+  for (const roomId of clearedRooms) {
+    ioServer.to(roomId).emit("live_status_change", {
+      room: roomId,
+      isLive: false,
+      publisherId: null,
+      publisherName: null,
+      audioOnly: false,
+    });
+    ioServer.emit("live_rooms_changed", {
+      room: roomId,
+      isLive: false,
+      publisherName: null,
+      audioOnly: false,
+    });
   }
-
-  const liveEntries = liveStateRepo.listLiveEntries();
-
-  const result: RoomsLiveInfoStatePayload[] = liveEntries.map(
-    ({ roomId, state }) => {
-      const publisher = state.publisherId
-        ? accountRepo.fetchUser(state.publisherId, roomId)
-        : null;
-
-      return {
-        room: roomId,
-        isLive: state.publisherId != null,
-        publisherName: publisher?.name ?? null,
-        audioOnly: state.publisherId != null ? state.audioOnly ?? false : false,
-      };
-    }
-  );
-
-  res.status(200).json(result);
-});
+}, 10_000);
 
 // サーバーを起動しているときに、もともとつながっているソケットを一旦切断する
 ioServer.disconnectSockets();
