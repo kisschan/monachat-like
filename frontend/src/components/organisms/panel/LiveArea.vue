@@ -127,7 +127,11 @@ import { useUserStore } from "@/stores/user";
 import { useRoomStore } from "@/stores/room";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
-import { socketIOInstance, type LiveStatusChangePayload } from "@/socketIOInstance";
+import {
+  LiveRoomsChangedPayload,
+  socketIOInstance,
+  type LiveStatusChangePayload,
+} from "@/socketIOInstance";
 import {
   MediaAcquireError,
   PublishCancelledError,
@@ -269,6 +273,33 @@ const isMyLive = computed(
 const clearPublishUiErrors = () => {
   errorMessage.value = null;
   screenAudioNotice.value = null;
+};
+
+// =====================
+// Socket.IO 配信状態変化受信
+
+const upsertLiveRoom = (p: LiveRoomsChangedPayload) => {
+  const idx = liveRooms.value.findIndex((x) => x.room === p.room);
+  if (p.isLive) {
+    const next = {
+      room: p.room,
+      isLive: true,
+      publisherName: p.publisherName,
+      audioOnly: p.audioOnly,
+    };
+    if (idx >= 0) liveRooms.value[idx] = next;
+    else liveRooms.value.push(next);
+  } else {
+    // 配信終了は一覧から消す（表示が「配信中一覧」ならこれが自然）
+    if (idx >= 0) liveRooms.value.splice(idx, 1);
+  }
+
+  // 任意：表示順を固定（部屋ID順）
+  liveRooms.value.sort((a, b) => a.room.localeCompare(b.room));
+};
+
+const handleLiveRoomsChanged = (p: LiveRoomsChangedPayload) => {
+  upsertLiveRoom(p);
 };
 
 // =====================
@@ -824,8 +855,21 @@ watch(
   { immediate: true },
 );
 
+const onSocketConnect = () => {
+  void loadLiveRooms().catch(() => {});
+};
+
+const onVisibilityChange = () => {
+  if (document.visibilityState === "visible") {
+    void loadLiveRooms().catch(() => {});
+  }
+};
+
 onMounted(() => {
   socketIOInstance.on("live_status_change", handleLiveStatusChange);
+  socketIOInstance.on("live_rooms_changed", handleLiveRoomsChanged);
+  socketIOInstance.on("connect", onSocketConnect);
+  document.addEventListener("visibilitychange", onVisibilityChange);
   if (liveEnabled.value) {
     loadStatus().catch((e) => logErrorSafe("failed to load live status on mount", e));
   }
@@ -847,6 +891,9 @@ watch(
 onBeforeUnmount(() => {
   abortInFlightPublishStart();
   socketIOInstance.off("live_status_change", handleLiveStatusChange);
+  socketIOInstance.off("live_rooms_changed", handleLiveRoomsChanged);
+  socketIOInstance.off("connect", onSocketConnect);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
   restoreFavicon();
   cancelledPublishAttempts.clear();
 

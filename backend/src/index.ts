@@ -326,6 +326,14 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
     audioOnly, // ★ 追加
   });
 
+  // 全体（一覧用）：安全なフィールドだけで通知
+  ioServer.emit("live_rooms_changed", {
+    room,
+    isLive: true,
+    publisherName: account.character.avatar.name.value, // raw
+    audioOnly,
+  });
+
   return res.json({ ok: true });
 });
 app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
@@ -415,6 +423,14 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
     publisherId: null,
     publisherName: null,
     audioOnly: false, // ★ 配信終了時は false にしておく
+  });
+
+  // 全体（一覧用）：安全なフィールドだけで通知
+  ioServer.emit("live_rooms_changed", {
+    room,
+    isLive: false,
+    publisherName: account.character.avatar.name.value, // raw
+    audioOnly: false, // 配信終了時は false にしておく
   });
 
   return res.json({ ok: true });
