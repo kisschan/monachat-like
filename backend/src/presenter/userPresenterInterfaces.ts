@@ -33,6 +33,7 @@ export interface IServerCommunicator {
     param: LiveStatusChangePayload,
     socketId: string
   ): void;
+  sendLiveRoomsChanged(param: any, to: string | null): void;
 }
 
 // クライアントからのイベントを定義したインターフェイス

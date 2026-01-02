@@ -96,4 +96,12 @@ export class ServerCommunicator implements IServerCommunicator {
   ): void {
     this.server.to(socketId).emit("live_status_change", param); //個別socket宛
   }
+
+  sendLiveRoomsChanged(param: any, to: string | null): void {
+    if (to !== null) {
+      this.server.in(to).emit("live_rooms_changed", param);
+    } else {
+      this.server.emit("live_rooms_changed", param);
+    }
+  }
 }

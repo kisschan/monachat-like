@@ -396,5 +396,15 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       },
       room
     );
+
+    this.serverCommunicator.sendLiveRoomsChanged(
+      {
+        room: room,
+        isLive: false,
+        publisherName: null,
+        audioOnly: false,
+      },
+      null
+    );
   }
 }

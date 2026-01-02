@@ -28,7 +28,6 @@ import {
 } from "./live/streamTokenV1";
 
 import { liveAuthAnyRoom } from "./middleware/liveAuthAnyRoom";
-import { Room } from "./protocol/room";
 
 const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
 const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
