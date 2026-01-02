@@ -101,7 +101,7 @@
       <AccordionTab :header="`配信一覧（${visibleLiveRooms.length}）`">
         <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
         <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
-        <p v-else-if="!hasLoadedOnce" class="hint">準備中…</p>
+        <p v-else-if="visibleLiveRooms.length === 0 && !hasLoadedOnce" class="hint">準備中…</p>
         <p v-else-if="visibleLiveRooms.length === 0" class="hint">配信中の部屋はありません。</p>
         <ul v-else class="live-rooms">
           <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
@@ -237,6 +237,12 @@ const loadLiveRooms = async (): Promise<boolean> => {
   } finally {
     if (seq === roomsListSeq) isBusyRoomsList.value = false;
   }
+};
+
+const loadLiveRoomsAndMark = async (reason: string): Promise<void> => {
+  console.debug("loadLiveRoomsAndMark called:", reason);
+  const ok = await loadLiveRooms();
+  if (ok) hasLoadedOnce.value = true;
 };
 
 // 共通状態
@@ -831,7 +837,7 @@ watch(
   async (newRoomId, oldRoomId) => {
     if (newRoomId === oldRoomId) return;
     abortInFlightPublishStart();
-    void loadLiveRooms().catch(() => {});
+    void loadLiveRoomsAndMark("room-change").catch(() => {});
     // 先に配信停止（サーバロック解除含む）
     if (activePublishCtx.value || publishHandle.value || lastPublishCtx.value) {
       await stopPublishSafely("room-change", { uiPolicy: "user-action" }).catch(() => {});
@@ -879,6 +885,7 @@ watch(
 );
 
 watch(token, () => {
+  roomsListSeq++;
   roomsListUnauthorized = 0;
   roomsListError.value = null;
   isBusyRoomsList.value = false;
@@ -887,14 +894,22 @@ watch(token, () => {
 });
 
 const onSocketConnect = () => {
-  if (isReadyToLoadLiveRooms.value) void loadLiveRooms().catch(() => {});
+  if (isReadyToLoadLiveRooms.value) void loadLiveRoomsAndMark("socket-connect").catch(() => {});
 };
 
 const onVisibilityChange = () => {
   if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
-    void loadLiveRooms().catch(() => {});
+    void loadLiveRoomsAndMark("visibility-change").catch(() => {});
   }
 };
+
+watch(
+  isReadyToLoadLiveRooms,
+  (ready) => {
+    if (ready) void loadLiveRoomsAndMark("ready").catch(() => {});
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   socketIOInstance.on("live_status_change", handleLiveStatusChange);
@@ -905,19 +920,6 @@ onMounted(() => {
     loadStatus().catch((e) => logErrorSafe("failed to load live status on mount", e));
   }
 });
-
-// token と roomId が揃ったら配信一覧をロード
-watch(
-  isReadyToLoadLiveRooms,
-  (ready) => {
-    if (ready) {
-      void loadLiveRooms().then((ok) => {
-        if (ok) hasLoadedOnce.value = true;
-      });
-    }
-  },
-  { immediate: true },
-);
 
 onBeforeUnmount(() => {
   abortInFlightPublishStart();
