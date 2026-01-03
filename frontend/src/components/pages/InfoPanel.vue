@@ -19,7 +19,7 @@
       </Tab>
       <Tab value="4">
         <span v-if="!isKBMode">配信</span>
-        <i v-else class="pi pi-github"></i>
+        <i v-else class="pi pi-youtube"></i>
       </Tab>
     </TabList>
     <TabPanels>

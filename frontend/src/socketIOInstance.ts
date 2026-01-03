@@ -105,6 +105,14 @@ export type LiveStatusChangePayload = {
   publisherName: string | null;
   audioOnly: boolean;
 };
+
+export type LiveRoomsChangedPayload = {
+  room: string;
+  isLive: boolean;
+  publisherName: string | null; // raw
+  audioOnly: boolean;
+};
+
 export type WebrtcConfigResponse = {
   role: "publisher" | "viewer";
   whipUrl?: string;

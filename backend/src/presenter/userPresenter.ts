@@ -323,19 +323,30 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const rooms = this.accountRep.getRooms();
     this.notifyRoomsChanged(rooms);
 
-    // ここでライブ状態を push
+    // ここでライブ状態を push（入室者が見るべき“現状態”を必ず送る）
     const live = this.liveStateRepo.get(room);
+
+    let publisherName: string | null = null;
     if (live.publisherId) {
       const publisher = this.accountRep.fetchUser(live.publisherId, room);
-      const payload: LiveStatusChangePayload = {
-        room,
-        isLive: true,
-        publisherId: live.publisherId,
-        publisherName: publisher?.name ?? null,
-        audioOnly: live.audioOnly,
-      };
-      this.serverCommunicator.sendLiveStatusChange(payload, room);
+      publisherName = publisher?.name ?? null;
     }
+
+    const isLive = !!live.publisherId;
+
+    const payload: LiveStatusChangePayload = {
+      room,
+      isLive,
+      publisherId: live.publisherId ?? null,
+      publisherName,
+      audioOnly: isLive ? live.audioOnly ?? false : false,
+    };
+
+    // 重要：入室者だけに送る
+    this.serverCommunicator.sendLiveStatusChangeToSocket(
+      payload,
+      clientInfo.socketId
+    );
   }
 
   // private
@@ -384,6 +395,16 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
         audioOnly: false,
       },
       room
+    );
+
+    this.serverCommunicator.sendLiveRoomsChanged(
+      {
+        room: room,
+        isLive: false,
+        publisherName: null,
+        audioOnly: false,
+      },
+      null
     );
   }
 }

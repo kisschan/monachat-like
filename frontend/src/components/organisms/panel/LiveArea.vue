@@ -93,6 +93,32 @@
       </section>
     </section>
   </section>
+
+  <!-- 配信一覧（全体）: この部屋が liveEnabled=false でも見える -->
+
+  <section v-if="token" class="live-rooms-area">
+    <Accordion :active-index="0">
+      <AccordionPanel value="0">
+        <AccordionHeader>配信中の部屋一覧({{ visibleLiveRooms.length }})</AccordionHeader>
+        <AccordionContent>
+          <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
+          <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
+          <p v-else-if="visibleLiveRooms.length === 0 && !hasLoadedOnce" class="hint">準備中…</p>
+          <p v-else-if="visibleLiveRooms.length === 0" class="hint">配信中の部屋はありません。</p>
+          <ul v-else class="live-rooms">
+            <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
+              <div class="live-rooms__room">{{ r.room }}</div>
+
+              <div class="live-rooms__meta">
+                <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
+                <span v-if="r.audioOnly">（音声のみ）</span>
+              </div>
+            </li>
+          </ul>
+        </AccordionContent>
+      </AccordionPanel>
+    </Accordion>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -102,7 +128,11 @@ import { useUserStore } from "@/stores/user";
 import { useRoomStore } from "@/stores/room";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
-import { socketIOInstance, type LiveStatusChangePayload } from "@/socketIOInstance";
+import {
+  LiveRoomsChangedPayload,
+  socketIOInstance,
+  type LiveStatusChangePayload,
+} from "@/socketIOInstance";
 import {
   MediaAcquireError,
   PublishCancelledError,
@@ -116,7 +146,16 @@ import {
   type WhepSubscribeHandle,
 } from "@/webrtc/whepClient";
 import PrimeButton from "primevue/button";
+import Accordion from "primevue/accordion";
+import AccordionPanel from "primevue/accordionpanel";
+import AccordionContent from "primevue/accordioncontent";
+import AccordionHeader from "primevue/accordionheader";
 const isProd = import.meta.env.PROD;
+const API_HOST = ((import.meta.env.VITE_APP_API_HOST as string | undefined) ?? "").replace(
+  /\/$/,
+  "",
+);
+const apiUrl = (path: string) => (API_HOST ? `${API_HOST}${path}` : path);
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
 
@@ -149,6 +188,68 @@ const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
 const myId = computed(() => userStore.myID);
 
+// =====================
+// 配信一覧（全体）
+// =====================
+type LiveRoomListItem = {
+  room: string;
+  isLive: boolean;
+  publisherName: string | null; // raw（trimしない）
+  audioOnly: boolean;
+};
+
+const liveRooms = ref<LiveRoomListItem[]>([]);
+const isBusyRoomsList = ref(false);
+const roomsListError = ref<string | null>(null);
+let roomsListSeq = 0;
+let roomsListUnauthorized = 0;
+
+const visibleLiveRooms = computed(() => liveRooms.value.filter((x) => x.isLive));
+
+const loadLiveRooms = async (): Promise<boolean> => {
+  if (!isReadyToLoadLiveRooms.value) return false;
+
+  const seq = ++roomsListSeq;
+  isBusyRoomsList.value = true;
+  roomsListError.value = null;
+
+  try {
+    const res = await axios.get<LiveRoomListItem[]>(apiUrl("/api/live/rooms"), {
+      headers: { "X-Monachat-Token": token.value },
+    });
+    if (seq !== roomsListSeq) return false; // 競合抑止（古い応答を捨てる）
+    roomsListUnauthorized = 0;
+    const list = Array.isArray(res.data) ? res.data : [];
+    liveRooms.value = list.slice().sort((a, b) => a.room.localeCompare(b.room)); // ★初回もソート
+    return true;
+  } catch (e) {
+    logErrorSafe("failed to load live rooms", e);
+    if (seq !== roomsListSeq) return false;
+    const safe = toSafeErr(e);
+    if (safe.status === 401) {
+      roomsListUnauthorized++;
+      // 最初の数回は「準備中」扱いで黙る
+      if (roomsListUnauthorized <= 3) {
+        roomsListError.value = null;
+        return false;
+      }
+      roomsListError.value =
+        "配信一覧の取得に失敗しました（認証未確立）。再接続または再読み込みしてください。";
+      return false;
+    }
+    roomsListError.value = "配信一覧の取得に失敗しました。";
+    return false;
+  } finally {
+    if (seq === roomsListSeq) isBusyRoomsList.value = false;
+  }
+};
+
+const loadLiveRoomsAndMark = async (reason: string): Promise<void> => {
+  console.debug("loadLiveRoomsAndMark called:", reason);
+  const ok = await loadLiveRooms();
+  if (ok) hasLoadedOnce.value = true;
+};
+
 // 共通状態
 const isLive = ref(false);
 const publisherName = ref<string | null>(null);
@@ -156,6 +257,11 @@ const publisherId = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
 const publishMode = ref<PublishMode>("camera");
 const screenAudioNotice = ref<string | null>(null);
+const isReadyToLoadLiveRooms = computed(() => {
+  return !!token.value && !!roomId.value;
+});
+
+const hasLoadedOnce = ref(false);
 
 // 配信者側
 const isBusyPublish = ref(false);
@@ -201,6 +307,33 @@ const isMyLive = computed(
 const clearPublishUiErrors = () => {
   errorMessage.value = null;
   screenAudioNotice.value = null;
+};
+
+// =====================
+// Socket.IO 配信状態変化受信
+
+const upsertLiveRoom = (p: LiveRoomsChangedPayload) => {
+  const idx = liveRooms.value.findIndex((x) => x.room === p.room);
+  if (p.isLive) {
+    const next = {
+      room: p.room,
+      isLive: true,
+      publisherName: p.publisherName,
+      audioOnly: p.audioOnly,
+    };
+    if (idx >= 0) liveRooms.value[idx] = next;
+    else liveRooms.value.push(next);
+  } else {
+    // 配信終了は一覧から消す（表示が「配信中一覧」ならこれが自然）
+    if (idx >= 0) liveRooms.value.splice(idx, 1);
+  }
+
+  // 任意：表示順を固定（部屋ID順）
+  liveRooms.value.sort((a, b) => a.room.localeCompare(b.room));
+};
+
+const handleLiveRoomsChanged = (p: LiveRoomsChangedPayload) => {
+  upsertLiveRoom(p);
 };
 
 // =====================
@@ -709,7 +842,7 @@ watch(
   async (newRoomId, oldRoomId) => {
     if (newRoomId === oldRoomId) return;
     abortInFlightPublishStart();
-
+    void loadLiveRoomsAndMark("room-change").catch(() => {});
     // 先に配信停止（サーバロック解除含む）
     if (activePublishCtx.value || publishHandle.value || lastPublishCtx.value) {
       await stopPublishSafely("room-change", { uiPolicy: "user-action" }).catch(() => {});
@@ -756,8 +889,38 @@ watch(
   { immediate: true },
 );
 
+watch(token, () => {
+  roomsListSeq++;
+  roomsListUnauthorized = 0;
+  roomsListError.value = null;
+  isBusyRoomsList.value = false;
+  liveRooms.value = [];
+  hasLoadedOnce.value = false;
+});
+
+const onSocketConnect = () => {
+  if (isReadyToLoadLiveRooms.value) void loadLiveRoomsAndMark("socket-connect").catch(() => {});
+};
+
+const onVisibilityChange = () => {
+  if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
+    void loadLiveRoomsAndMark("visibility-change").catch(() => {});
+  }
+};
+
+watch(
+  isReadyToLoadLiveRooms,
+  (ready) => {
+    if (ready) void loadLiveRoomsAndMark("ready").catch(() => {});
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   socketIOInstance.on("live_status_change", handleLiveStatusChange);
+  socketIOInstance.on("live_rooms_changed", handleLiveRoomsChanged);
+  socketIOInstance.on("connect", onSocketConnect);
+  document.addEventListener("visibilitychange", onVisibilityChange);
   if (liveEnabled.value) {
     loadStatus().catch((e) => logErrorSafe("failed to load live status on mount", e));
   }
@@ -766,6 +929,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   abortInFlightPublishStart();
   socketIOInstance.off("live_status_change", handleLiveStatusChange);
+  socketIOInstance.off("live_rooms_changed", handleLiveRoomsChanged);
+  socketIOInstance.off("connect", onSocketConnect);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
   restoreFavicon();
   cancelledPublishAttempts.clear();
 
@@ -806,6 +972,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 12px;
   padding: 14px;
+  height: 100%;
 }
 
 .live-card h3 {
@@ -857,5 +1024,37 @@ onBeforeUnmount(() => {
   font-size: 0.8rem;
   opacity: 0.8;
   margin-top: 10px;
+}
+
+.live-rooms-area {
+  margin: 10px 0 12px;
+}
+
+.live-rooms {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.live-rooms__item {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.live-rooms__room {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.live-rooms__meta {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>
