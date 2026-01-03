@@ -18,8 +18,10 @@
         <i v-else class="pi pi-github"></i>
       </Tab>
       <Tab value="4">
-        <span v-if="!isKBMode">配信</span>
-        <i v-else class="pi pi-youtube"></i>
+        <span v-if="!isKBMode">配信{{ liveTabSuffix }}</span>
+        <span v-else class="tab-icon-with-count">
+          <i class="pi pi-youtube">{{ liveTabSuffix }}</i>
+        </span>
       </Tab>
     </TabList>
     <TabPanels>
@@ -57,18 +59,26 @@ import { storeToRefs } from "pinia";
 import { useSettingStore } from "@/stores/setting";
 import { useUIStore } from "@/stores/ui";
 import { useUsersStore } from "@/stores/users";
+import { useLiveRoomsStore } from "@/stores/liveRooms";
 import { computed } from "vue";
 
 const usersStore = useUsersStore();
 const uiStore = useUIStore();
 const settingStore = useSettingStore();
+const liveRoomsStore = useLiveRoomsStore();
 
 const { isKBMode } = storeToRefs(settingStore);
 const { manageableUsers } = storeToRefs(usersStore);
 const { panelBackgroundColor } = storeToRefs(uiStore);
+const { liveCount, hasLoadedOnce: hasLoadedLiveRoomsOnce } = storeToRefs(liveRoomsStore);
 
 const populationText = computed(() => {
   return `(${Object.keys(manageableUsers.value).length})`;
+});
+
+const liveTabSuffix = computed(() => {
+  if (!hasLoadedLiveRoomsOnce.value) return "(…)";
+  return `(${liveCount.value})`;
 });
 </script>
 
@@ -80,5 +90,15 @@ const populationText = computed(() => {
 
 :deep(.p-tabpanels) {
   background-color: v-bind(panelBackgroundColor);
+}
+
+.tab-icon-with-count {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.tab-count {
+  font-size: 0.9em;
 }
 </style>

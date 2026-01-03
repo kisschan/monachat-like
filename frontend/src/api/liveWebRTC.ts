@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { joinUrl } from "./url";
+
 export type WebrtcConfigResponse = {
   role: "publisher" | "viewer";
   whipUrl?: string;
@@ -15,7 +17,7 @@ export async function fetchWebrtcConfig(
   const base = import.meta.env.VITE_APP_API_HOST; // 既存のAPIと同じ
 
   const res = await axios.get<WebrtcConfigResponse>(
-    `${base}api/live/${encodedRoom}/webrtc-config`,
+    joinUrl(base, "api", "live", encodedRoom, "webrtc-config"),
     {
       headers: {
         "X-Monachat-Token": token,
