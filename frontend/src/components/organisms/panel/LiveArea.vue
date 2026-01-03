@@ -99,12 +99,12 @@
   <section v-if="token" class="live-rooms-area">
     <Accordion :active-index="0">
       <AccordionPanel value="0">
-        <AccordionHeader>配信中の部屋一覧({{ visibleLiveRooms.length }})</AccordionHeader>
+        <AccordionHeader>配信中の部屋一覧({{ liveCount }})</AccordionHeader>
         <AccordionContent>
           <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
           <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
-          <p v-else-if="visibleLiveRooms.length === 0 && !hasLoadedOnce" class="hint">準備中…</p>
-          <p v-else-if="visibleLiveRooms.length === 0" class="hint">配信中の部屋はありません。</p>
+          <p v-else-if="liveCount === 0 && !hasLoadedOnce" class="hint">準備中…</p>
+          <p v-else-if="liveCount === 0" class="hint">配信中の部屋はありません。</p>
           <ul v-else class="live-rooms">
             <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
               <div class="live-rooms__room">{{ r.room }}</div>
@@ -123,9 +123,11 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import axios from "axios";
 import { useUserStore } from "@/stores/user";
 import { useRoomStore } from "@/stores/room";
+import { useLiveRoomsStore } from "@/stores/liveRooms";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
@@ -151,11 +153,6 @@ import AccordionPanel from "primevue/accordionpanel";
 import AccordionContent from "primevue/accordioncontent";
 import AccordionHeader from "primevue/accordionheader";
 const isProd = import.meta.env.PROD;
-const API_HOST = ((import.meta.env.VITE_APP_API_HOST as string | undefined) ?? "").replace(
-  /\/$/,
-  "",
-);
-const apiUrl = (path: string) => (API_HOST ? `${API_HOST}${path}` : path);
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
 
@@ -191,65 +188,15 @@ const myId = computed(() => userStore.myID);
 // =====================
 // 配信一覧（全体）
 // =====================
-type LiveRoomListItem = {
-  room: string;
-  isLive: boolean;
-  publisherName: string | null; // raw（trimしない）
-  audioOnly: boolean;
-};
-
-const liveRooms = ref<LiveRoomListItem[]>([]);
-const isBusyRoomsList = ref(false);
-const roomsListError = ref<string | null>(null);
-let roomsListSeq = 0;
-let roomsListUnauthorized = 0;
-
-const visibleLiveRooms = computed(() => liveRooms.value.filter((x) => x.isLive));
-
-const loadLiveRooms = async (): Promise<boolean> => {
-  if (!isReadyToLoadLiveRooms.value) return false;
-
-  const seq = ++roomsListSeq;
-  isBusyRoomsList.value = true;
-  roomsListError.value = null;
-
-  try {
-    const res = await axios.get<LiveRoomListItem[]>(apiUrl("/api/live/rooms"), {
-      headers: { "X-Monachat-Token": token.value },
-    });
-    if (seq !== roomsListSeq) return false; // 競合抑止（古い応答を捨てる）
-    roomsListUnauthorized = 0;
-    const list = Array.isArray(res.data) ? res.data : [];
-    liveRooms.value = list.slice().sort((a, b) => a.room.localeCompare(b.room)); // ★初回もソート
-    return true;
-  } catch (e) {
-    logErrorSafe("failed to load live rooms", e);
-    if (seq !== roomsListSeq) return false;
-    const safe = toSafeErr(e);
-    if (safe.status === 401) {
-      roomsListUnauthorized++;
-      // 最初の数回は「準備中」扱いで黙る
-      if (roomsListUnauthorized <= 3) {
-        roomsListError.value = null;
-        return false;
-      }
-      roomsListError.value =
-        "配信一覧の取得に失敗しました（認証未確立）。再接続または再読み込みしてください。";
-      return false;
-    }
-    roomsListError.value = "配信一覧の取得に失敗しました。";
-    return false;
-  } finally {
-    if (seq === roomsListSeq) isBusyRoomsList.value = false;
-  }
-};
-
-const loadLiveRoomsAndMark = async (reason: string): Promise<void> => {
-  console.debug("loadLiveRoomsAndMark called:", reason);
-  const ok = await loadLiveRooms();
-  if (ok) hasLoadedOnce.value = true;
-};
-
+const liveRoomsStore = useLiveRoomsStore();
+const {
+  visibleLiveRooms,
+  hasLoadedOnce,
+  errorMessage: roomsListError,
+  status: liveRoomsStatus,
+  liveCount,
+} = storeToRefs(liveRoomsStore);
+const isBusyRoomsList = computed(() => liveRoomsStatus.value === "loading");
 // 共通状態
 const isLive = ref(false);
 const publisherName = ref<string | null>(null);
@@ -260,8 +207,6 @@ const screenAudioNotice = ref<string | null>(null);
 const isReadyToLoadLiveRooms = computed(() => {
   return !!token.value && !!roomId.value;
 });
-
-const hasLoadedOnce = ref(false);
 
 // 配信者側
 const isBusyPublish = ref(false);
@@ -302,38 +247,16 @@ const isMyLive = computed(
   () => isLive.value && publisherId.value != null && publisherId.value === myId.value,
 );
 
-//画面共有機能
+// =====================
+// Socket.IO 配信状態変化受信
 
 const clearPublishUiErrors = () => {
   errorMessage.value = null;
   screenAudioNotice.value = null;
 };
 
-// =====================
-// Socket.IO 配信状態変化受信
-
-const upsertLiveRoom = (p: LiveRoomsChangedPayload) => {
-  const idx = liveRooms.value.findIndex((x) => x.room === p.room);
-  if (p.isLive) {
-    const next = {
-      room: p.room,
-      isLive: true,
-      publisherName: p.publisherName,
-      audioOnly: p.audioOnly,
-    };
-    if (idx >= 0) liveRooms.value[idx] = next;
-    else liveRooms.value.push(next);
-  } else {
-    // 配信終了は一覧から消す（表示が「配信中一覧」ならこれが自然）
-    if (idx >= 0) liveRooms.value.splice(idx, 1);
-  }
-
-  // 任意：表示順を固定（部屋ID順）
-  liveRooms.value.sort((a, b) => a.room.localeCompare(b.room));
-};
-
 const handleLiveRoomsChanged = (p: LiveRoomsChangedPayload) => {
-  upsertLiveRoom(p);
+  liveRoomsStore.applyLiveRoomsChanged(p);
 };
 
 // =====================
@@ -837,12 +760,26 @@ const handleLiveStatusChange = (payload: LiveStatusChangePayload) => {
   }
 };
 
+const onSocketConnect = () => {
+  if (isReadyToLoadLiveRooms.value) void liveRoomsStore.load("socket-connect").catch(() => {});
+};
+
+const onVisibilityChange = () => {
+  if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
+    void liveRoomsStore.load("visibility-change").catch(() => {});
+  }
+};
+
 watch(
   () => userStore.currentRoom?.id,
   async (newRoomId, oldRoomId) => {
     if (newRoomId === oldRoomId) return;
     abortInFlightPublishStart();
-    void loadLiveRoomsAndMark("room-change").catch(() => {});
+    if (isReadyToLoadLiveRooms.value) {
+      void liveRoomsStore.load("room-change").catch(() => {});
+    } else {
+      liveRoomsStore.reset("room-change");
+    }
     // 先に配信停止（サーバロック解除含む）
     if (activePublishCtx.value || publishHandle.value || lastPublishCtx.value) {
       await stopPublishSafely("room-change", { uiPolicy: "user-action" }).catch(() => {});
@@ -890,28 +827,13 @@ watch(
 );
 
 watch(token, () => {
-  roomsListSeq++;
-  roomsListUnauthorized = 0;
-  roomsListError.value = null;
-  isBusyRoomsList.value = false;
-  liveRooms.value = [];
-  hasLoadedOnce.value = false;
+  liveRoomsStore.reset("token-change");
 });
-
-const onSocketConnect = () => {
-  if (isReadyToLoadLiveRooms.value) void loadLiveRoomsAndMark("socket-connect").catch(() => {});
-};
-
-const onVisibilityChange = () => {
-  if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
-    void loadLiveRoomsAndMark("visibility-change").catch(() => {});
-  }
-};
 
 watch(
   isReadyToLoadLiveRooms,
   (ready) => {
-    if (ready) void loadLiveRoomsAndMark("ready").catch(() => {});
+    if (ready) void liveRoomsStore.load("ready").catch(() => {});
   },
   { immediate: true },
 );
