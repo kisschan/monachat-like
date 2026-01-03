@@ -318,10 +318,9 @@ app.post("/api/live/:room/start", liveAuth, (req, res) => {
 
   const audioOnly = !!req.body?.audioOnly;
 
-  const streamKey =
-    isSameAccount && state.streamKey
-      ? state.streamKey
-      : crypto.randomBytes(16).toString("hex");
+  const reusableStreamKey =
+    isSameAccount && state.streamKey ? state.streamKey : null;
+  const streamKey = reusableStreamKey ?? crypto.randomBytes(16).toString("hex");
 
   liveStateRepo.setStarting(room, account.id, audioOnly, streamKey);
 

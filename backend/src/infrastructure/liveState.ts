@@ -1,3 +1,5 @@
+import * as crypto from "crypto";
+
 export type LivePhase = "idle" | "starting" | "live";
 
 export type LiveRoomState = {
@@ -47,11 +49,16 @@ export class LiveStateRepository {
     audioOnly: boolean,
     streamKey: string
   ): void {
+    const ensuredStreamKey =
+      typeof streamKey === "string" && streamKey.length > 0
+        ? streamKey
+        : crypto.randomBytes(16).toString("hex");
+
     const now = Date.now();
     this.state[room] = {
       publisherId,
       audioOnly,
-      streamKey,
+      streamKey: ensuredStreamKey,
       phase: "starting",
       startedAtMs: null, // liveに入ったら入れる
       lastHeartbeatMs: now, // startingのロック時刻として使う
