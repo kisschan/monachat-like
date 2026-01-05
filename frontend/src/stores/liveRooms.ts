@@ -66,6 +66,7 @@ export const useLiveRoomsStore = defineStore("liveRooms", () => {
   };
 
   const applyLiveRoomsChanged = (payload: LiveRoomsChangedPayload): void => {
+    // isLive が boolean でない（invalidate payload など）なら pull で更新
     if (typeof payload.isLive !== "boolean") {
       void load("socket-invalidate").catch((e) =>
         logErrorSafe("failed to reload live rooms after invalidate", e),
@@ -74,13 +75,27 @@ export const useLiveRoomsStore = defineStore("liveRooms", () => {
     }
 
     const idx = rooms.value.findIndex((room) => room.room === payload.room);
+
     if (payload.isLive) {
-      const next = {
+      if (
+        typeof payload.publisherName === "undefined" ||
+        typeof payload.audioOnly === "undefined"
+      ) {
+        void load("socket-invalidate-missing-fields").catch((e) =>
+          logErrorSafe("failed to reload live rooms after missing fields", e),
+        );
+        return;
+      }
+
+      const next: LiveRoomListItem = {
         room: payload.room,
         isLive: true,
-        publisherName: payload.publisherName,
+        // publisherName は string|null に narrowing 済み。念のため null coalesce
+        publisherName: payload.publisherName ?? null,
+        // audioOnly は boolean に narrowing 済み
         audioOnly: payload.audioOnly,
       };
+
       if (idx >= 0) rooms.value[idx] = next;
       else rooms.value.push(next);
     } else if (idx >= 0) {
