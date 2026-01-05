@@ -175,6 +175,72 @@ describe("live endpoints visibility", () => {
     expect(body.error).toBe("not_found");
   });
 
+  it("returns 404 status when viewer is blocked", async () => {
+    const publisher = createAccount({
+      id: "publisher",
+      token: "publisher-token",
+      room,
+      name: "pub",
+      ip: "1.1.1.1",
+    });
+    const viewer = createAccount({
+      id: "viewer",
+      token: "viewer-token",
+      room,
+      name: "view",
+      ip: "2.2.2.2",
+    });
+
+    liveStateRepo.setStarting(room, publisher.id, false, "stream-key");
+    liveStateRepo.markLive(room);
+    accountRepo.updateIgnore(publisher.id, viewer.ihash, true);
+
+    const res = await fetch(
+      `${baseUrl}/api/live/${encodeURIComponent(room)}/status`,
+      {
+        headers: { "x-monachat-token": viewer.token },
+      }
+    );
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("not_found");
+  });
+
+  it("returns live status when viewer is allowed", async () => {
+    const publisher = createAccount({
+      id: "publisher",
+      token: "publisher-token",
+      room,
+      name: "pub",
+      ip: "1.1.1.1",
+    });
+    const viewer = createAccount({
+      id: "viewer",
+      token: "viewer-token",
+      room,
+      name: "view",
+      ip: "2.2.2.2",
+    });
+
+    liveStateRepo.setStarting(room, publisher.id, false, "stream-key");
+    liveStateRepo.markLive(room);
+
+    const res = await fetch(
+      `${baseUrl}/api/live/${encodeURIComponent(room)}/status`,
+      {
+        headers: { "x-monachat-token": viewer.token },
+      }
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.isLive).toBe(true);
+    expect(body.publisherId).toBe(publisher.id);
+    expect(body.publisherName).toBe("pub");
+    expect(body.audioOnly).toBe(false);
+  });
+
   it("allows viewers when there is no block", async () => {
     const publisher = createAccount({
       id: "publisher",

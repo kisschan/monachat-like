@@ -289,6 +289,7 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
   const room = req.params.room;
   const state = liveStateRepo.get(room);
   const repo = AccountRepository.getInstance();
+  const account = (req as any).account as Account;
 
   if (state.phase !== "live" || !state.publisherId) {
     return res.json({
@@ -297,6 +298,10 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
       publisherName: null,
       audioOnly: false,
     });
+  }
+
+  if (!canViewerSeePublisher(account, state.publisherId)) {
+    return res.status(404).json({ error: "not_found" });
   }
 
   const user = repo.fetchUser(state.publisherId, room);
@@ -438,17 +443,10 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
 
   ioServer.to(room).emit("live_status_change", {
     room,
-    isLive: false,
-    publisherId: null,
-    publisherName: null,
-    audioOnly: false, // ★ 配信終了時は false にしておく
   });
 
   ioServer.emit("live_rooms_changed", {
     room: room,
-    isLive: false,
-    publisherName: null,
-    audioOnly: false, // ★ 配信終了時は false にしておく
   });
 
   return res.json({ ok: true });
@@ -479,21 +477,12 @@ app.get("/internal/live/whip-auth", (req, res) => {
   const changed = liveStateRepo.markLive(result.roomId);
 
   if (changed) {
-    const publisher = accountRepo.fetchUser(result.publisherId, result.roomId);
-
     ioServer.to(result.roomId).emit("live_status_change", {
       room: result.roomId,
-      isLive: true,
-      publisherId: result.publisherId,
-      publisherName: publisher?.name ?? null,
-      audioOnly: liveStateRepo.get(result.roomId).audioOnly,
     });
 
     ioServer.emit("live_rooms_changed", {
       room: result.roomId,
-      isLive: true,
-      publisherName: publisher?.name ?? null,
-      audioOnly: liveStateRepo.get(result.roomId).audioOnly,
     });
   }
 
@@ -571,16 +560,9 @@ setInterval(() => {
   for (const roomId of clearedRooms) {
     ioServer.to(roomId).emit("live_status_change", {
       room: roomId,
-      isLive: false,
-      publisherId: null,
-      publisherName: null,
-      audioOnly: false,
     });
     ioServer.emit("live_rooms_changed", {
       room: roomId,
-      isLive: false,
-      publisherName: null,
-      audioOnly: false,
     });
   }
 }, 10_000);

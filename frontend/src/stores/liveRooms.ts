@@ -66,6 +66,13 @@ export const useLiveRoomsStore = defineStore("liveRooms", () => {
   };
 
   const applyLiveRoomsChanged = (payload: LiveRoomsChangedPayload): void => {
+    if (typeof payload.isLive !== "boolean") {
+      void load("socket-invalidate").catch((e) =>
+        logErrorSafe("failed to reload live rooms after invalidate", e),
+      );
+      return;
+    }
+
     const idx = rooms.value.findIndex((room) => room.room === payload.room);
     if (payload.isLive) {
       const next = {

@@ -731,32 +731,45 @@ const onClickStopWatch = async () => {
 
 // サーバ側の live_status_change を受けて状態を更新
 const handleLiveStatusChange = (payload: LiveStatusChangePayload) => {
-  if (!userStore.currentRoom || userStore.currentRoom.id !== payload.room) return;
+  if (!payload?.room) return;
 
-  const wasLive = isLive.value;
+  const inSameRoom = userStore.currentRoom?.id === payload.room;
+  const hasDetail = typeof payload.isLive === "boolean";
 
-  isLive.value = payload.isLive;
-  publisherName.value = payload.publisherName;
-  publisherId.value = payload.publisherId;
-  isAudioOnlyLive.value = payload.audioOnly ?? false;
+  if (inSameRoom && hasDetail) {
+    const wasLive = isLive.value;
 
-  if (!payload.isLive) {
-    activePublishCtx.value = null;
-    if (lastPublishCtx.value?.roomId === payload.room) {
-      lastPublishCtx.value = null;
+    isLive.value = payload.isLive ?? false;
+    publisherName.value = payload.publisherName ?? null;
+    publisherId.value = payload.publisherId ?? null;
+    isAudioOnlyLive.value = payload.audioOnly ?? false;
+
+    if (!payload.isLive) {
+      activePublishCtx.value = null;
+      if (lastPublishCtx.value?.roomId === payload.room) {
+        lastPublishCtx.value = null;
+      }
     }
+
+    // 視聴側
+    if (!payload.isLive && subscribeHandle.value) {
+      subscribeHandle.value.stop().catch(() => {});
+      subscribeHandle.value = null;
+    }
+
+    // 配信側（サーバから isLive=false が飛んできたら止める）
+    if (wasLive && !payload.isLive && publishHandle.value) {
+      publishHandle.value.stop().catch(() => {});
+      publishHandle.value = null;
+    }
+  } else if (inSameRoom) {
+    void loadStatus().catch((e) => logErrorSafe("failed to reload live status after socket", e));
   }
 
-  // 視聴側
-  if (!payload.isLive && subscribeHandle.value) {
-    subscribeHandle.value.stop().catch(() => {});
-    subscribeHandle.value = null;
-  }
-
-  // 配信側（サーバから isLive=false が飛んできたら止める）
-  if (wasLive && !payload.isLive && publishHandle.value) {
-    publishHandle.value.stop().catch(() => {});
-    publishHandle.value = null;
+  if (isReadyToLoadLiveRooms.value) {
+    void liveRoomsStore.load("live-status-change").catch((e) =>
+      logErrorSafe("failed to reload live rooms after status change", e),
+    );
   }
 };
 

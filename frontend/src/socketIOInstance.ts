@@ -100,17 +100,17 @@ export type SLEEPResParam = {
 
 export type LiveStatusChangePayload = {
   room: string;
-  isLive: boolean;
-  publisherId: string | null;
-  publisherName: string | null;
-  audioOnly: boolean;
+  isLive?: boolean;
+  publisherId?: string | null;
+  publisherName?: string | null;
+  audioOnly?: boolean;
 };
 
 export type LiveRoomsChangedPayload = {
   room: string;
-  isLive: boolean;
-  publisherName: string | null; // raw
-  audioOnly: boolean;
+  isLive?: boolean;
+  publisherName?: string | null; // raw
+  audioOnly?: boolean;
 };
 
 export type WebrtcConfigResponse = {
