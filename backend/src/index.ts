@@ -39,6 +39,7 @@ const isWhipTokenSecretValid =
 const app: Application = express();
 const server: http.Server = http.createServer(app);
 const liveStateRepo = LiveStateRepository.getInstance();
+const accountRepo = AccountRepository.getInstance();
 
 type RoomConfig = {
   id: string;
@@ -167,6 +168,28 @@ function requireInternalSecret(req: Request, res: Response): boolean {
     res.status(403).end();
     return false;
   }
+  return true;
+}
+
+function canViewerSeePublisher(
+  viewer: Account,
+  publisherId: string | null
+): boolean {
+  if (!publisherId) return true;
+
+  const publisher = accountRepo.getAccountByID(publisherId);
+  if (!publisher) return true;
+
+  const viewerIhash = viewer.character.avatar.whiteTrip?.value ?? null;
+  if (accountRepo.isIgnored(publisherId, viewerIhash)) {
+    return false;
+  }
+
+  const publisherIhash = publisher.character.avatar.whiteTrip?.value ?? null;
+  if (accountRepo.isIgnored(viewer.id, publisherIhash)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -345,6 +368,11 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
   if (!state.publisherId || !state.streamKey) {
     return res.status(409).json({ error: "no-live-lock" });
   }
+
+  if (!canViewerSeePublisher(account, state.publisherId)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
   const whipBase = getWhipBase();
   const stream = encodeURIComponent(state.streamKey);
 
@@ -425,8 +453,6 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
 
   return res.json({ ok: true });
 });
-
-const accountRepo = AccountRepository.getInstance();
 
 app.get("/internal/live/whip-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
@@ -515,21 +541,25 @@ app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
     return res.status(500).json({ error: "internal" });
   }
 
-  const result = liveEntries.map(({ roomId, state }) => {
-    const isLive = state.phase === "live"; // ★ ここ重要（starting を live 扱いしない）
+  const result = liveEntries
+    .map(({ roomId, state }) => {
+      const isLive = state.phase === "live"; // ★ ここ重要（starting を live 扱いしない）
 
-    const publisher =
-      isLive && state.publisherId
-        ? accountRepo.fetchUser(state.publisherId, roomId)
-        : null;
+      const publisher =
+        isLive && state.publisherId
+          ? accountRepo.fetchUser(state.publisherId, roomId)
+          : null;
 
-    return {
-      room: roomId, // ★ roomName → room
-      isLive, // ★ phase で判定
-      publisherName: publisher?.name ?? null,
-      audioOnly: isLive ? !!state.audioOnly : false,
-    };
-  });
+      return {
+        room: roomId, // ★ roomName → room
+        isLive, // ★ phase で判定
+        publisherName: publisher?.name ?? null,
+        publisherId: isLive ? state.publisherId ?? null : null,
+        audioOnly: isLive ? !!state.audioOnly : false,
+      };
+    })
+    .filter((entry) => canViewerSeePublisher(account, entry.publisherId))
+    .map(({ publisherId, ...rest }) => rest);
 
   result.sort((a, b) => String(a.room).localeCompare(String(b.room)));
 
@@ -581,12 +611,16 @@ ioServer.on("connection", (socket: Socket): void => {
   eventReceiver.init();
 });
 
-try {
-  server.listen(3000, () => {
-    logger.info(`Start server...`);
-  });
-} catch (e) {
-  if (e instanceof Error) {
-    logger.error(e.message);
+if (process.env.NODE_ENV !== "test") {
+  try {
+    server.listen(3000, () => {
+      logger.info(`Start server...`);
+    });
+  } catch (e) {
+    if (e instanceof Error) {
+      logger.error(e.message);
+    }
   }
 }
+
+export { app, server };

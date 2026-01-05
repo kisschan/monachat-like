@@ -9,9 +9,11 @@ import { Character } from "../domain/character";
 export class AccountRepository implements IAccountRepository {
   private static instance: AccountRepository;
   private accounts: Account[];
+  private ignores: Map<string, Set<string>>; // key: account.id, value: set of ihash
 
   private constructor() {
     this.accounts = [];
+    this.ignores = new Map();
   }
 
   static getInstance(): AccountRepository {
@@ -172,10 +174,35 @@ export class AccountRepository implements IAccountRepository {
   //! 単体テストにのみ使用
   deleteAll(): void {
     this.accounts = [];
+    this.ignores.clear();
   }
 
-  private getAccountByID(id: string): Account | undefined {
+  getAccountByID(id: string): Account | undefined {
     const account = this.accounts.filter((u) => u.id === id)[0];
     return account;
+  }
+
+  updateIgnore(id: string, targetIhash: string, isActive: boolean): void {
+    const ihash = targetIhash?.trim();
+    if (!ihash) return;
+
+    const existing = this.ignores.get(id) ?? new Set<string>();
+    if (isActive) {
+      existing.add(ihash);
+      this.ignores.set(id, existing);
+      return;
+    }
+
+    existing.delete(ihash);
+    if (existing.size === 0) {
+      this.ignores.delete(id);
+    } else {
+      this.ignores.set(id, existing);
+    }
+  }
+
+  isIgnored(sourceAccountId: string, targetIhash: string | undefined | null) {
+    if (!targetIhash) return false;
+    return this.ignores.get(sourceAccountId)?.has(targetIhash) ?? false;
   }
 }

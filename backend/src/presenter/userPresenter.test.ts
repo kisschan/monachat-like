@@ -87,6 +87,7 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
   return {
     getAccountBySocketId: vi.fn().mockReturnValue(account),
     getAccountByToken: vi.fn().mockReturnValue(account),
+    getAccountByID: vi.fn().mockReturnValue(account),
     fetchUsers: vi.fn().mockReturnValue([{ id: "1" }, { id: "2" }]),
     fetchUser: vi.fn().mockReturnValue({
       id: "id",
@@ -116,6 +117,8 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
     updateLastCommentTime: vi.fn(),
     updateCharacter: vi.fn(),
     speak: vi.fn().mockReturnValue(true),
+    updateIgnore: vi.fn(),
+    isIgnored: vi.fn().mockReturnValue(false),
   };
 });
 

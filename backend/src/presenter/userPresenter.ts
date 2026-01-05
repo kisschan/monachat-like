@@ -244,6 +244,8 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const account = this.authorize(req.token, clientInfo.socketId);
     const currentRoom = account.character.currentRoom;
     if (currentRoom == null) return;
+    const ignores = req.stat === "on";
+    this.accountRep.updateIgnore(account.id, req.ihash, ignores);
     const res: IGResponse = {
       id: account.id,
       stat: req.stat,

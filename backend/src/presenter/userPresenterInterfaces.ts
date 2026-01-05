@@ -63,6 +63,7 @@ export interface IClientCommunicator {
 export interface IAccountRepository {
   getAccountBySocketId(socketId: string): Account | undefined;
   getAccountByToken(token?: string): Account | undefined;
+  getAccountByID(id: string): Account | undefined;
   fetchUsers(room: string): USER[];
   fetchUser(id: string, room: string): USER | undefined;
   getRooms(): Room[];
@@ -79,6 +80,11 @@ export interface IAccountRepository {
   getRemainingDelay(id: string, now: Date): number;
   updateCharacter(id: string, character: Character): void;
   speak(id: string, now: Date): boolean;
+  updateIgnore(id: string, targetIhash: string, isActive: boolean): void;
+  isIgnored(
+    sourceAccountId: string,
+    targetIhash: string | undefined | null
+  ): boolean;
 }
 
 export interface ISystemReceivedLogger {

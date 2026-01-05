@@ -518,4 +518,19 @@ describe("AccountRepository", () => {
       });
     });
   });
+
+  describe("#updateIgnore", () => {
+    it("should register and remove ignores per account", () => {
+      const account = accountRepsitory.create("socketId");
+      const otherIhash = "OTHER_IHASH";
+
+      expect(accountRepsitory.isIgnored(account.id, otherIhash)).toBeFalsy();
+
+      accountRepsitory.updateIgnore(account.id, otherIhash, true);
+      expect(accountRepsitory.isIgnored(account.id, otherIhash)).toBe(true);
+
+      accountRepsitory.updateIgnore(account.id, otherIhash, false);
+      expect(accountRepsitory.isIgnored(account.id, otherIhash)).toBe(false);
+    });
+  });
 });
