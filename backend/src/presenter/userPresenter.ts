@@ -325,26 +325,46 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const rooms = this.accountRep.getRooms();
     this.notifyRoomsChanged(rooms);
 
-    // ここでライブ状態を push（入室者が見るべき“現状態”を必ず送る）
     const live = this.liveStateRepo.get(room);
 
-    let publisherName: string | null = null;
-    if (live.publisherId) {
-      const publisher = this.accountRep.fetchUser(live.publisherId, room);
-      publisherName = publisher?.name ?? null;
+    // ライブ無し：これは秘匿不要なので詳細でOK（ただし好みで {room} invalidate に寄せても良い）
+    if (!live.publisherId) {
+      this.serverCommunicator.sendLiveStatusChangeToSocket(
+        {
+          room,
+          isLive: false,
+          publisherId: null,
+          publisherName: null,
+          audioOnly: false,
+        },
+        clientInfo.socketId
+      );
+      return;
     }
 
-    const isLive = !!live.publisherId;
+    const publisherId = live.publisherId;
+
+    // 無視関係：存在秘匿（invalidate-only）
+    if (!this.canViewerSeePublisher(room, account.id, publisherId)) {
+      this.serverCommunicator.sendLiveStatusChangeToSocket(
+        { room },
+        clientInfo.socketId
+      );
+      return;
+    }
+
+    // 許可：即時表示（詳細push）
+    const publisher = this.accountRep.fetchUser(publisherId, room);
+    const publisherName = publisher?.name ?? null;
 
     const payload: LiveStatusChangePayload = {
       room,
-      isLive,
-      publisherId: live.publisherId ?? null,
+      isLive: true,
+      publisherId,
       publisherName,
-      audioOnly: isLive ? live.audioOnly ?? false : false,
+      audioOnly: live.audioOnly ?? false,
     };
 
-    // 重要：入室者だけに送る
     this.serverCommunicator.sendLiveStatusChangeToSocket(
       payload,
       clientInfo.socketId
@@ -388,25 +408,40 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
 
     this.liveStateRepo.clear(room);
 
-    this.serverCommunicator.sendLiveStatusChange(
-      {
-        room,
-        isLive: false,
-        publisherId: null,
-        publisherName: null,
-        audioOnly: false,
-      },
-      room
+    this.serverCommunicator.sendLiveStatusChange({ room }, room);
+
+    // live_rooms_changed が “全体一覧更新通知” なら「roomだけ」でも良いが、より秘匿するなら room すら出さず全体invalidateも検討
+    this.serverCommunicator.sendLiveRoomsChanged({ room }, null);
+  }
+
+  private canViewerSeePublisher(
+    room: string,
+    viewerId: string,
+    publisherId: string
+  ): boolean {
+    if (viewerId === publisherId) return true;
+
+    const viewer = this.accountRep.fetchUser(viewerId, room);
+    const publisher = this.accountRep.fetchUser(publisherId, room);
+
+    // 秘匿優先：情報が欠けたら見せない
+    if (!viewer || !publisher) return false;
+
+    const viewerIhash = viewer.ihash;
+    const publisherIhash = publisher.ihash;
+
+    // 秘匿優先：ihash が欠けたら見せない（ここは要件次第だが、conceal重視ならfalse推奨）
+    if (!viewerIhash || !publisherIhash) return false;
+
+    const viewerIgnoresPublisher = this.accountRep.isIgnored(
+      viewerId,
+      publisherIhash
+    );
+    const publisherIgnoresViewer = this.accountRep.isIgnored(
+      publisherId,
+      viewerIhash
     );
 
-    this.serverCommunicator.sendLiveRoomsChanged(
-      {
-        room: room,
-        isLive: false,
-        publisherName: null,
-        audioOnly: false,
-      },
-      null
-    );
+    return !(viewerIgnoresPublisher || publisherIgnoresViewer);
   }
 }
