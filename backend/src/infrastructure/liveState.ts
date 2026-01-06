@@ -133,17 +133,20 @@ export class LiveStateRepository {
     return false;
   }
 
-  sweepExpiredStarting(ttlMs: number): string[] {
+  sweepExpiredStarting(
+    ttlMs: number
+  ): Array<{ roomId: string; publisherId: string | null }> {
     const now = Date.now();
-    const cleared: string[] = [];
+    const cleared: Array<{ roomId: string; publisherId: string | null }> = [];
 
     for (const [roomId, s] of Object.entries(this.state)) {
       if (s.phase !== "starting") continue;
 
       const t = s.lastHeartbeatMs ?? 0;
       if (t === 0 || now - t > ttlMs) {
+        const publisherId = s.publisherId ?? null;
         this.clear(roomId);
-        cleared.push(roomId);
+        cleared.push({ roomId, publisherId });
       }
     }
     return cleared;

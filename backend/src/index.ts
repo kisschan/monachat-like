@@ -28,6 +28,10 @@ import {
 } from "./live/streamTokenV1";
 
 import { liveAuthAnyRoom } from "./middleware/liveAuthAnyRoom";
+import {
+  emitLiveRoomsChangedFiltered,
+  emitLiveStatusChangeFiltered,
+} from "./live/socketVisibility";
 
 const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
 const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
@@ -430,6 +434,7 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
   const room = req.params.room;
   const account = (req as any).account as Account;
   const state = liveStateRepo.get(room);
+  const publisherId = state.publisherId;
 
   if (!state.publisherId) {
     return res.json({ ok: true });
@@ -441,13 +446,27 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
 
   liveStateRepo.clear(room);
 
-  ioServer.to(room).emit("live_status_change", {
-    room,
-  });
+  if (publisherId) {
+    emitLiveStatusChangeFiltered({
+      ioServer,
+      accountRepo,
+      roomId: room,
+      publisherId,
+      payloadForAllowed: {
+        room,
+      },
+    });
 
-  ioServer.emit("live_rooms_changed", {
-    room: room,
-  });
+    emitLiveRoomsChangedFiltered({
+      ioServer,
+      accountRepo,
+      roomId: room,
+      publisherId,
+      payloadForAllowed: {
+        room: room,
+      },
+    });
+  }
 
   return res.json({ ok: true });
 });
@@ -475,14 +494,28 @@ app.get("/internal/live/whip-auth", (req, res) => {
   }
 
   const changed = liveStateRepo.markLive(result.roomId);
+  const state = liveStateRepo.get(result.roomId);
+  const publisherId = state.publisherId;
 
-  if (changed) {
-    ioServer.to(result.roomId).emit("live_status_change", {
-      room: result.roomId,
+  if (changed && publisherId) {
+    emitLiveStatusChangeFiltered({
+      ioServer,
+      accountRepo,
+      roomId: result.roomId,
+      publisherId,
+      payloadForAllowed: {
+        room: result.roomId,
+      },
     });
 
-    ioServer.emit("live_rooms_changed", {
-      room: result.roomId,
+    emitLiveRoomsChangedFiltered({
+      ioServer,
+      accountRepo,
+      roomId: result.roomId,
+      publisherId,
+      payloadForAllowed: {
+        room: result.roomId,
+      },
     });
   }
 
@@ -557,12 +590,26 @@ app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
 
 setInterval(() => {
   const clearedRooms = liveStateRepo.sweepExpiredStarting(90_000);
-  for (const roomId of clearedRooms) {
-    ioServer.to(roomId).emit("live_status_change", {
-      room: roomId,
+  for (const { roomId, publisherId } of clearedRooms) {
+    if (!publisherId) continue;
+
+    emitLiveStatusChangeFiltered({
+      ioServer,
+      accountRepo,
+      roomId,
+      publisherId,
+      payloadForAllowed: {
+        room: roomId,
+      },
     });
-    ioServer.emit("live_rooms_changed", {
-      room: roomId,
+    emitLiveRoomsChangedFiltered({
+      ioServer,
+      accountRepo,
+      roomId,
+      publisherId,
+      payloadForAllowed: {
+        room: roomId,
+      },
     });
   }
 }, 10_000);
@@ -578,6 +625,7 @@ ioServer.on("connection", (socket: Socket): void => {
   const eventSender = new ServerCommunicator({
     server: ioServer,
     systemLogger: systemLogger,
+    accountRepo,
   });
   const eventReceiver = new ClientCommunicator({ socket: socket });
   const presenter = new UserPresenter({

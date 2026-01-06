@@ -56,6 +56,9 @@ const ServerMock = vi.fn().mockImplementation(() => {
     sendUsers: vi.fn(),
     sendLiveStatusChange: vi.fn(),
     sendLiveStatusChangeToSocket: vi.fn(),
+    sendLiveRoomsChanged: vi.fn(),
+    sendLiveRoomsChangedFiltered: vi.fn(),
+    sendLiveStatusChangeFiltered: vi.fn(),
   };
 });
 

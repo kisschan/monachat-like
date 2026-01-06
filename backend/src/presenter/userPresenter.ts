@@ -405,13 +405,22 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
 
     const state = this.liveStateRepo.get(room);
     if (!state || state.publisherId !== accountId) return;
-
+    const publisherId = state.publisherId;
     this.liveStateRepo.clear(room);
 
-    this.serverCommunicator.sendLiveStatusChange({ room }, room);
+    if (publisherId) {
+      this.serverCommunicator.sendLiveStatusChangeFiltered(
+        room,
+        publisherId,
+        { room }
+      );
 
-    // live_rooms_changed が “全体一覧更新通知” なら「roomだけ」でも良いが、より秘匿するなら room すら出さず全体invalidateも検討
-    this.serverCommunicator.sendLiveRoomsChanged({ room }, null);
+      this.serverCommunicator.sendLiveRoomsChangedFiltered(
+        room,
+        publisherId,
+        { room }
+      );
+    }
   }
 
   private canViewerSeePublisher(

@@ -34,6 +34,16 @@ export interface IServerCommunicator {
     socketId: string
   ): void;
   sendLiveRoomsChanged(param: any, to: string | null): void;
+  sendLiveRoomsChangedFiltered(
+    roomId: string,
+    publisherId: string,
+    payload: any
+  ): void;
+  sendLiveStatusChangeFiltered(
+    roomId: string,
+    publisherId: string,
+    payload: LiveStatusChangePayload
+  ): void;
 }
 
 // クライアントからのイベントを定義したインターフェイス

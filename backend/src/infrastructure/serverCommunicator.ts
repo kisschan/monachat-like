@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import {
   IServerCommunicator,
   ISystemSendLogger,
+  LiveStatusChangePayload,
 } from "../presenter/userPresenterInterfaces";
 import { AWAKE, AWAKEResponse } from "../protocol/awake";
 import { COM, COMResponse } from "../protocol/com";
@@ -12,25 +13,35 @@ import { IG, IGResponse } from "../protocol/ig";
 import { SET, SETResponse } from "../protocol/set";
 import { SLEEP, SLEEPResponse } from "../protocol/sleep";
 import { USER } from "../protocol/user";
-import { LiveStatusChangePayload } from "../protocol/livestatus";
+import { AccountRepository } from "./accountRepository";
+import {
+  emitLiveRoomsChangedFiltered,
+  emitLiveStatusChangeFiltered,
+} from "../live/socketVisibility";
 
 export interface IServerNotificator {}
 
 export type ServerCommunicatorOptions = {
   server: Server;
   systemLogger: ISystemSendLogger;
+  accountRepo: AccountRepository;
 };
 
 export class ServerCommunicator implements IServerCommunicator {
   notificator?: IServerNotificator;
   private server: Server;
   private systemLogger: ISystemSendLogger;
+  private accountRepo: AccountRepository;
 
-  constructor({ server, systemLogger }: ServerCommunicatorOptions) {
+  constructor({
+    server,
+    systemLogger,
+    accountRepo,
+  }: ServerCommunicatorOptions) {
     this.server = server;
     this.systemLogger = systemLogger;
+    this.accountRepo = accountRepo;
   }
-
   sendCOM(param: COMResponse, to: string): void {
     this.systemLogger.logSendCOM(param, to);
     this.server.in(to).emit(COM, param);
@@ -103,5 +114,33 @@ export class ServerCommunicator implements IServerCommunicator {
     } else {
       this.server.emit("live_rooms_changed", param);
     }
+  }
+
+  sendLiveRoomsChangedFiltered(
+    roomId: string,
+    publisherId: string,
+    payload: any
+  ): void {
+    emitLiveRoomsChangedFiltered({
+      ioServer: this.server,
+      accountRepo: this.accountRepo,
+      roomId,
+      publisherId,
+      payloadForAllowed: payload,
+    });
+  }
+
+  sendLiveStatusChangeFiltered(
+    roomId: string,
+    publisherId: string,
+    payload: LiveStatusChangePayload
+  ): void {
+    emitLiveStatusChangeFiltered({
+      ioServer: this.server,
+      accountRepo: this.accountRepo,
+      roomId,
+      publisherId,
+      payloadForAllowed: payload,
+    });
   }
 }

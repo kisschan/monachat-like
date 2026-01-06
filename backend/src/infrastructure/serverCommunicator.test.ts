@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import { ISystemSendLogger } from "../presenter/userPresenterInterfaces";
 import { ServerCommunicator } from "./serverCommunicator";
+import { AccountRepository } from "./accountRepository";
 
 const SystemSendLoggerMock = vi.fn().mockImplementation(() => {
   return {
@@ -24,13 +25,17 @@ class MockServer extends Server {
 let socketServer: MockServer;
 let serverCommunicator: ServerCommunicator;
 let systemSendLogger: ISystemSendLogger;
+let accountRepo: AccountRepository;
 
 beforeEach(() => {
   socketServer = new MockServer();
   systemSendLogger = new SystemSendLoggerMock();
+  accountRepo = AccountRepository.getInstance();
+  accountRepo.deleteAll();
   serverCommunicator = new ServerCommunicator({
     server: socketServer,
     systemLogger: systemSendLogger,
+    accountRepo,
   });
   socketServer.in = vi.fn().mockReturnThis();
   socketServer.emit = vi.fn().mockReturnThis();
