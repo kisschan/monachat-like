@@ -252,6 +252,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       ihash: req.ihash,
     };
     this.serverCommunicator.sendIG(res, currentRoom);
+    this.invalidateLiveVisibility(account.id, req.ihash);
   }
 
   receivedAUTH(req: AUTHRequest, clientInfo: ClientInfo): void {
@@ -383,6 +384,32 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       token: account.token,
     });
     return account;
+  }
+
+  private invalidateLiveVisibility(
+    sourceAccountId: string,
+    targetIhash: string | undefined
+  ): void {
+    const socketIds = new Set<string>();
+
+    const sourceAccount = this.accountRep.getAccountByID(sourceAccountId);
+    if (sourceAccount?.socketId) socketIds.add(sourceAccount.socketId);
+
+    if (targetIhash) {
+      const targets = this.accountRep.findAccountsByIhash(targetIhash);
+      for (const target of targets) {
+        if (target?.socketId) {
+          socketIds.add(target.socketId);
+        }
+      }
+    }
+
+    for (const socketId of socketIds) {
+      this.serverCommunicator.sendLiveRoomsChangedToSocket(
+        { type: "invalidate" },
+        socketId
+      );
+    }
   }
 
   private notifyRoomsChanged(rooms: Room[]): void {

@@ -57,6 +57,7 @@ const ServerMock = vi.fn().mockImplementation(() => {
     sendLiveStatusChange: vi.fn(),
     sendLiveStatusChangeToSocket: vi.fn(),
     sendLiveRoomsChanged: vi.fn(),
+    sendLiveRoomsChangedToSocket: vi.fn(),
     sendLiveRoomsChangedFiltered: vi.fn(),
     sendLiveStatusChangeFiltered: vi.fn(),
   };
@@ -122,6 +123,8 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
     speak: vi.fn().mockReturnValue(true),
     updateIgnore: vi.fn(),
     isIgnored: vi.fn().mockReturnValue(false),
+    findAccountsByIhash: vi.fn().mockReturnValue([]),
+    __account: account,
   };
 });
 
@@ -848,6 +851,39 @@ describe("#receivedIG", () => {
     );
     expect(server.sendIG).toBeCalledTimes(1);
     // expect(server.sendIG).toBeCalledWith({})
+  });
+
+  it("sends invalidate to self and target sockets on ignore toggle", () => {
+    const selfAccount = (accountRep as any).__account as Account;
+    selfAccount.socketId = "self-socket";
+
+    const targetAccount = Account.instantiate({
+      idGenerator: { generate: () => "target" } as IDGeneratable,
+      socketId: "target-socket",
+    });
+    accountRep.getAccountByID = vi
+      .fn()
+      .mockImplementation((id: string) =>
+        id === selfAccount.id ? selfAccount : targetAccount
+      );
+    accountRep.findAccountsByIhash = vi
+      .fn()
+      .mockReturnValue([targetAccount]);
+
+    presenter.receivedIG(
+      { token: "hogeToken", stat: "on", ihash: "target-ihash" },
+      clientInfo
+    );
+
+    expect(server.sendLiveRoomsChangedToSocket).toHaveBeenCalledWith(
+      { type: "invalidate" },
+      "self-socket"
+    );
+    expect(server.sendLiveRoomsChangedToSocket).toHaveBeenCalledWith(
+      { type: "invalidate" },
+      "target-socket"
+    );
+    expect(server.sendLiveRoomsChangedToSocket).toHaveBeenCalledTimes(2);
   });
 });
 

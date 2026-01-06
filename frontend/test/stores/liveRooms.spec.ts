@@ -32,7 +32,10 @@ describe("liveRooms store", () => {
     const store = useLiveRoomsStore();
 
     // invalidate系（isLive欠落 or detail欠落）を想定
-    store.applyLiveRoomsChanged({ room: "/live" } as any);
+    store.applyLiveRoomsChanged({ type: "invalidate" } as any);
+
+    // invalidate系（isLive欠落 or detail欠落）を想定
+    store.applyLiveRoomsChanged({ type: "invalidate" } as any);
 
     // 安全のため microtask を一周
     await Promise.resolve();

@@ -182,6 +182,13 @@ export class AccountRepository implements IAccountRepository {
     return account;
   }
 
+  findAccountsByIhash(ihash: string): Account[] {
+    if (!ihash) return [];
+    return this.accounts.filter(
+      (u) => u.character.avatar.whiteTrip?.value === ihash
+    );
+  }
+
   updateIgnore(id: string, targetIhash: string, isActive: boolean): void {
     const ihash = targetIhash?.trim();
     if (!ihash) return;

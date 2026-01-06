@@ -116,6 +116,11 @@ export class ServerCommunicator implements IServerCommunicator {
     }
   }
 
+  //無視の時送信
+  sendLiveRoomsChangedToSocket(param: any, socketId: string): void {
+    this.server.to(socketId).emit("live_rooms_changed", param);
+  }
+
   sendLiveRoomsChangedFiltered(
     roomId: string,
     publisherId: string,

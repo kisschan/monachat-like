@@ -107,7 +107,8 @@ export type LiveStatusChangePayload = {
 };
 
 export type LiveRoomsChangedPayload = {
-  room: string;
+  room?: string;
+  type?: "invalidate";
   isLive?: boolean;
   publisherName?: string | null; // raw
   audioOnly?: boolean;

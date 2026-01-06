@@ -39,6 +39,7 @@ export interface IServerCommunicator {
     publisherId: string,
     payload: any
   ): void;
+  sendLiveRoomsChangedToSocket(param: any, socketId: string): void;
   sendLiveStatusChangeFiltered(
     roomId: string,
     publisherId: string,
@@ -91,6 +92,7 @@ export interface IAccountRepository {
   updateCharacter(id: string, character: Character): void;
   speak(id: string, now: Date): boolean;
   updateIgnore(id: string, targetIhash: string, isActive: boolean): void;
+  findAccountsByIhash(ihash: string): Account[];
   isIgnored(
     sourceAccountId: string,
     targetIhash: string | undefined | null
