@@ -911,6 +911,59 @@ describe("#receivedIG", () => {
       new Set(["self-socket", "target-socket"])
     );
   });
+
+  it("sends invalidate to all sockets and room-limited status invalidation", () => {
+    const selfAccount = (accountRep as any).__account as Account;
+    selfAccount.socketId = "self-socket-a";
+
+    accountRep.getAccountByToken = vi.fn().mockReturnValue(selfAccount);
+    accountRep.create = vi.fn(() => {
+      throw new Error("create should not be called in this test");
+    });
+
+    const targetAccount = Account.instantiate({
+      idGenerator: { generate: () => "target" } as IDGeneratable,
+      socketId: "dummy",
+    } as any);
+    targetAccount.socketId = "target-socket-a";
+
+    accountRep.getAccountByID = vi.fn().mockImplementation((id: string) => {
+      return id === selfAccount.id ? selfAccount : undefined;
+    });
+    accountRep.findAccountsByIhash = vi.fn().mockReturnValue([targetAccount]);
+    accountRep.getSocketIdsByAccountId = vi.fn().mockImplementation((id: string) => {
+      if (id === selfAccount.id) return new Set(["self-socket-a", "self-socket-b"]);
+      if (id === targetAccount.id) return new Set(["target-socket-a", "target-socket-b"]);
+      return new Set();
+    });
+    accountRep.getSocketRoom = vi.fn().mockImplementation((socketId: string) => {
+      if (socketId === "self-socket-a") return "/1";
+      if (socketId === "target-socket-a") return "/1";
+      if (socketId === "self-socket-b") return "/2";
+      return undefined;
+    });
+
+    presenter.receivedIG(
+      { token: "hogeToken", stat: "on", ihash: "target-ihash" },
+      clientInfo
+    );
+
+    const roomCalls = (server.sendLiveRoomsChangedToSocket as any).mock
+      .calls as Array<[{ type: string }, string]>;
+    expect(roomCalls).toHaveLength(4);
+    expect(roomCalls.every(([payload]) => payload.type === "invalidate")).toBe(true);
+    expect(new Set(roomCalls.map(([, sid]) => sid))).toEqual(
+      new Set(["self-socket-a", "self-socket-b", "target-socket-a", "target-socket-b"])
+    );
+
+    const statusCalls = (server.sendLiveStatusChangeToSocket as any).mock
+      .calls as Array<[{ room: string }, string]>;
+    expect(statusCalls).toHaveLength(2);
+    expect(statusCalls.every(([payload]) => payload.room === "/1")).toBe(true);
+    expect(new Set(statusCalls.map(([, sid]) => sid))).toEqual(
+      new Set(["self-socket-a", "target-socket-a"])
+    );
+  });
 });
 
 describe("#receivedAUTH", () => {
