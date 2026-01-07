@@ -180,6 +180,7 @@ function canViewerSeePublisher(
   publisherId: string | null
 ): boolean {
   if (!publisherId) return true;
+  if (viewer.id === publisherId) return true;
 
   const publisher = accountRepo.getAccountByID(publisherId);
   if (!publisher) return true;
