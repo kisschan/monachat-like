@@ -377,6 +377,11 @@ const loadStatusFor = async (ctx: { roomId: string; token: string }) => {
   publisherName.value = res.publisherName;
   publisherId.value = res.publisherId;
   isAudioOnlyLive.value = res.audioOnly ?? false;
+
+  if (!res.isLive && subscribeHandle.value) {
+    subscribeHandle.value.stop().catch(() => {});
+    subscribeHandle.value = null;
+  }
 };
 
 const loadStatus = async () => {
@@ -387,6 +392,11 @@ const loadStatus = async () => {
   publisherName.value = res.publisherName;
   publisherId.value = res.publisherId;
   isAudioOnlyLive.value = res.audioOnly ?? false;
+
+  if (!res.isLive && subscribeHandle.value) {
+    subscribeHandle.value.stop().catch(() => {});
+    subscribeHandle.value = null;
+  }
 };
 
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
@@ -731,32 +741,49 @@ const onClickStopWatch = async () => {
 
 // サーバ側の live_status_change を受けて状態を更新
 const handleLiveStatusChange = (payload: LiveStatusChangePayload) => {
-  if (!userStore.currentRoom || userStore.currentRoom.id !== payload.room) return;
+  if (!payload?.room) return;
 
-  const wasLive = isLive.value;
+  const inSameRoom = userStore.currentRoom?.id === payload.room;
+  const hasDetail = typeof payload.isLive === "boolean";
 
-  isLive.value = payload.isLive;
-  publisherName.value = payload.publisherName;
-  publisherId.value = payload.publisherId;
-  isAudioOnlyLive.value = payload.audioOnly ?? false;
+  if (inSameRoom && hasDetail) {
+    const wasLive = isLive.value;
 
-  if (!payload.isLive) {
-    activePublishCtx.value = null;
-    if (lastPublishCtx.value?.roomId === payload.room) {
-      lastPublishCtx.value = null;
+    isLive.value = payload.isLive ?? false;
+    publisherName.value = payload.publisherName ?? null;
+    publisherId.value = payload.publisherId ?? null;
+    isAudioOnlyLive.value = payload.audioOnly ?? false;
+
+    if (!payload.isLive) {
+      activePublishCtx.value = null;
+      if (lastPublishCtx.value?.roomId === payload.room) {
+        lastPublishCtx.value = null;
+      }
     }
-  }
 
-  // 視聴側
-  if (!payload.isLive && subscribeHandle.value) {
-    subscribeHandle.value.stop().catch(() => {});
-    subscribeHandle.value = null;
-  }
+    // 視聴側
+    if (!payload.isLive && subscribeHandle.value) {
+      subscribeHandle.value.stop().catch(() => {});
+      subscribeHandle.value = null;
+    }
 
-  // 配信側（サーバから isLive=false が飛んできたら止める）
-  if (wasLive && !payload.isLive && publishHandle.value) {
-    publishHandle.value.stop().catch(() => {});
-    publishHandle.value = null;
+    // 配信側（サーバから isLive=false が飛んできたら止める）
+    if (wasLive && !payload.isLive && publishHandle.value) {
+      publishHandle.value.stop().catch(() => {});
+      publishHandle.value = null;
+    }
+  } else if (inSameRoom) {
+    void (async () => {
+      try {
+        await loadStatus();
+      } catch (e) {
+        logErrorSafe("failed to reload live status after socket", e);
+
+        // 重要：invalidate を受けたのに status が取れないなら fail-close
+        // blocked conceal (404) / webrtc-config conceal / transient error を区別せず「見えない側」に倒す
+        await applyNotLiveAndTearDown("socket-invalidate-loadStatus-failed");
+      }
+    })();
   }
 };
 
@@ -767,6 +794,28 @@ const onSocketConnect = () => {
 const onVisibilityChange = () => {
   if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
     void liveRoomsStore.load("visibility-change").catch(() => {});
+  }
+};
+
+const applyNotLiveAndTearDown = async (reason: string) => {
+  console.debug("applyNotLiveAndTearDown", reason);
+
+  // 状態を必ず「非ライブ」に倒す（秘匿要件）
+  isLive.value = false;
+  publisherId.value = null;
+  publisherName.value = null;
+  isAudioOnlyLive.value = false;
+
+  // 視聴停止
+  if (subscribeHandle.value) {
+    await subscribeHandle.value.stop().catch(() => {});
+    subscribeHandle.value = null;
+  }
+
+  // 配信側も念のため止める（自分が配信者でブロック関係が変わるケース等の保険）
+  if (publishHandle.value) {
+    await publishHandle.value.stop().catch(() => {});
+    publishHandle.value = null;
   }
 };
 

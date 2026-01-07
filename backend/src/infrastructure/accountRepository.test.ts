@@ -112,6 +112,20 @@ describe("AccountRepository", () => {
       const newAccount2 = accountRepsitory.getAccountBySocketId("socketNewId")!;
       expect(newAccount2.id).toBe(account.id);
     });
+
+    it("keeps old socket lookups after reconnect", () => {
+      const account = accountRepsitory.create("socket-old");
+      accountRepsitory.updateSocketIdWithValidToken(account.token, "socket-new");
+
+      const accountByOld = accountRepsitory.getAccountBySocketId("socket-old");
+      const accountByNew = accountRepsitory.getAccountBySocketId("socket-new");
+
+      expect(accountByOld?.id).toBe(account.id);
+      expect(accountByNew?.id).toBe(account.id);
+      expect(
+        accountRepsitory.getSocketIdsByAccountId(account.id)
+      ).toStrictEqual(new Set(["socket-old", "socket-new"]));
+    });
   });
 
   describe("#getAccountByToken", () => {
@@ -516,6 +530,21 @@ describe("AccountRepository", () => {
         const gotAccount = accountRepsitory.getAccountBySocketId("socketId");
         expect(gotAccount?.character.currentRoom).toBeUndefined();
       });
+    });
+  });
+
+  describe("#updateIgnore", () => {
+    it("should register and remove ignores per account", () => {
+      const account = accountRepsitory.create("socketId");
+      const otherIhash = "OTHER_IHASH";
+
+      expect(accountRepsitory.isIgnored(account.id, otherIhash)).toBeFalsy();
+
+      accountRepsitory.updateIgnore(account.id, otherIhash, true);
+      expect(accountRepsitory.isIgnored(account.id, otherIhash)).toBe(true);
+
+      accountRepsitory.updateIgnore(account.id, otherIhash, false);
+      expect(accountRepsitory.isIgnored(account.id, otherIhash)).toBe(false);
     });
   });
 });

@@ -52,6 +52,30 @@ export const useLiveRoomsStore = defineStore("liveRooms", () => {
   const seq = ref(0);
   const unauthorizedCount = ref(0);
 
+  // 追加: invalidateの同時多発をcoalesceする
+  let invalidateInFlight = false;
+  let invalidateQueued = false;
+
+  const requestInvalidateReload = (reason: string): void => {
+    if (invalidateInFlight) {
+      // 追撃は1回だけ予約（負荷抑制 + 取りこぼし回避）
+      invalidateQueued = true;
+      return;
+    }
+    invalidateInFlight = true;
+
+    void load(reason)
+      .catch((e) => logErrorSafe("failed to reload live rooms after invalidate", e))
+      .finally(() => {
+        invalidateInFlight = false;
+        if (invalidateQueued) {
+          invalidateQueued = false;
+          // 追撃は理由を分ける（デバッグ容易）
+          requestInvalidateReload("socket-invalidate-queued");
+        }
+      });
+  };
+
   const visibleLiveRooms = computed(() => rooms.value.filter((room) => room.isLive));
   const liveCount = computed(() => visibleLiveRooms.value.length);
 
@@ -63,17 +87,45 @@ export const useLiveRoomsStore = defineStore("liveRooms", () => {
     hasLoadedOnce.value = false;
     errorMessage.value = null;
     unauthorizedCount.value = 0;
+
+    // 追加: reset時にフラグを戻す（スタック防止）
+    invalidateInFlight = false;
+    invalidateQueued = false;
   };
 
   const applyLiveRoomsChanged = (payload: LiveRoomsChangedPayload): void => {
-    const idx = rooms.value.findIndex((room) => room.room === payload.room);
+    // isLive が boolean でない（invalidate payload など）なら pull で更新
+    if (typeof payload.isLive !== "boolean") {
+      requestInvalidateReload("socket-invalidate");
+      return;
+    }
+
+    // 追加：room が欠けていたら詳細更新不能なので pull にフォールバック
+    if (typeof payload.room !== "string" || payload.room.length === 0) {
+      requestInvalidateReload("socket-invalidate-missing-room");
+      return;
+    }
+
+    const roomId = payload.room; // ここから先は string に narrow 済み
+
+    const idx = rooms.value.findIndex((room) => room.room === roomId);
+
     if (payload.isLive) {
-      const next = {
-        room: payload.room,
+      if (
+        typeof payload.publisherName === "undefined" ||
+        typeof payload.audioOnly === "undefined"
+      ) {
+        requestInvalidateReload("socket-invalidate-missing-fields");
+        return;
+      }
+
+      const next: LiveRoomListItem = {
+        room: roomId,
         isLive: true,
-        publisherName: payload.publisherName,
+        publisherName: payload.publisherName ?? null,
         audioOnly: payload.audioOnly,
       };
+
       if (idx >= 0) rooms.value[idx] = next;
       else rooms.value.push(next);
     } else if (idx >= 0) {

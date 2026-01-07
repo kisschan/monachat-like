@@ -28,6 +28,10 @@ import {
 } from "./live/streamTokenV1";
 
 import { liveAuthAnyRoom } from "./middleware/liveAuthAnyRoom";
+import {
+  emitLiveRoomsChangedFiltered,
+  emitLiveStatusChangeFiltered,
+} from "./live/socketVisibility";
 
 const RAW_WHIP_TOKEN_SECRET = process.env.WHIP_TOKEN_SECRET ?? "";
 const WHIP_TOKEN_SECRET_MIN_LENGTH = 32; // 32文字未満は弱すぎとみなす
@@ -39,6 +43,7 @@ const isWhipTokenSecretValid =
 const app: Application = express();
 const server: http.Server = http.createServer(app);
 const liveStateRepo = LiveStateRepository.getInstance();
+const accountRepo = AccountRepository.getInstance();
 
 type RoomConfig = {
   id: string;
@@ -170,6 +175,44 @@ function requireInternalSecret(req: Request, res: Response): boolean {
   return true;
 }
 
+function canViewerSeePublisher(
+  viewer: Account,
+  publisherId: string | null
+): boolean {
+  if (!publisherId) return true;
+  if (viewer.id === publisherId) return true;
+
+  const publisher = accountRepo.getAccountByID(publisherId);
+  if (!publisher) return true;
+
+  const viewerIhash = viewer.character.avatar.whiteTrip?.value ?? null;
+  if (accountRepo.isIgnored(publisherId, viewerIhash)) {
+    return false;
+  }
+
+  const publisherIhash = publisher.character.avatar.whiteTrip?.value ?? null;
+  if (accountRepo.isIgnored(viewer.id, publisherIhash)) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldConcealViewerInRoom(viewer: Account, room: string): boolean {
+  const viewerIhash = viewer.character.avatar.whiteTrip?.value ?? null;
+  if (!viewerIhash) return true;
+
+  const users = accountRepo.fetchUsers(room);
+
+  for (const user of users) {
+    if (user.id === viewer.id) continue;
+    if (accountRepo.isIgnored(viewer.id, user.ihash)) return true;
+    if (accountRepo.isIgnored(user.id, viewerIhash)) return true;
+  }
+
+  return false;
+}
+
 const ioServer: Server = new Server(server, {
   path: "/monachatchat/",
   cors: {
@@ -266,6 +309,15 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
   const room = req.params.room;
   const state = liveStateRepo.get(room);
   const repo = AccountRepository.getInstance();
+  const account = (req as any).account as Account;
+
+  if (account.id !== state.publisherId && shouldConcealViewerInRoom(account, room)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  if (state.publisherId && !canViewerSeePublisher(account, state.publisherId)) {
+    return res.status(404).json({ error: "not_found" });
+  }
 
   if (state.phase !== "live" || !state.publisherId) {
     return res.json({
@@ -341,10 +393,19 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
 
   const state = liveStateRepo.get(room); // { publisherId, audioOnly, ... } 想定
 
+  if (account.id !== state.publisherId && shouldConcealViewerInRoom(account, room)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  if (state.publisherId && !canViewerSeePublisher(account, state.publisherId)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
   // ロックなし：配信開始手続きが踏まれていない
   if (!state.publisherId || !state.streamKey) {
     return res.status(409).json({ error: "no-live-lock" });
   }
+
   const whipBase = getWhipBase();
   const stream = encodeURIComponent(state.streamKey);
 
@@ -397,6 +458,7 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
   const room = req.params.room;
   const account = (req as any).account as Account;
   const state = liveStateRepo.get(room);
+  const publisherId = state.publisherId;
 
   if (!state.publisherId) {
     return res.json({ ok: true });
@@ -408,25 +470,30 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
 
   liveStateRepo.clear(room);
 
-  ioServer.to(room).emit("live_status_change", {
-    room,
-    isLive: false,
-    publisherId: null,
-    publisherName: null,
-    audioOnly: false, // ★ 配信終了時は false にしておく
-  });
+  if (publisherId) {
+    emitLiveStatusChangeFiltered({
+      ioServer,
+      accountRepo,
+      roomId: room,
+      publisherId,
+      payloadForAllowed: {
+        room,
+      },
+    });
 
-  ioServer.emit("live_rooms_changed", {
-    room: room,
-    isLive: false,
-    publisherName: null,
-    audioOnly: false, // ★ 配信終了時は false にしておく
-  });
+    emitLiveRoomsChangedFiltered({
+      ioServer,
+      accountRepo,
+      roomId: room,
+      publisherId,
+      payloadForAllowed: {
+        type: "invalidate",
+      },
+    });
+  }
 
   return res.json({ ok: true });
 });
-
-const accountRepo = AccountRepository.getInstance();
 
 app.get("/internal/live/whip-auth", (req, res) => {
   if (!requireInternalSecret(req, res)) return;
@@ -451,23 +518,28 @@ app.get("/internal/live/whip-auth", (req, res) => {
   }
 
   const changed = liveStateRepo.markLive(result.roomId);
+  const state = liveStateRepo.get(result.roomId);
+  const publisherId = state.publisherId;
 
-  if (changed) {
-    const publisher = accountRepo.fetchUser(result.publisherId, result.roomId);
-
-    ioServer.to(result.roomId).emit("live_status_change", {
-      room: result.roomId,
-      isLive: true,
-      publisherId: result.publisherId,
-      publisherName: publisher?.name ?? null,
-      audioOnly: liveStateRepo.get(result.roomId).audioOnly,
+  if (changed && publisherId) {
+    emitLiveStatusChangeFiltered({
+      ioServer,
+      accountRepo,
+      roomId: result.roomId,
+      publisherId,
+      payloadForAllowed: {
+        room: result.roomId,
+      },
     });
 
-    ioServer.emit("live_rooms_changed", {
-      room: result.roomId,
-      isLive: true,
-      publisherName: publisher?.name ?? null,
-      audioOnly: liveStateRepo.get(result.roomId).audioOnly,
+    emitLiveRoomsChangedFiltered({
+      ioServer,
+      accountRepo,
+      roomId: result.roomId,
+      publisherId,
+      payloadForAllowed: {
+        type: "invalidate",
+      },
     });
   }
 
@@ -515,21 +587,25 @@ app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
     return res.status(500).json({ error: "internal" });
   }
 
-  const result = liveEntries.map(({ roomId, state }) => {
-    const isLive = state.phase === "live"; // ★ ここ重要（starting を live 扱いしない）
+  const result = liveEntries
+    .map(({ roomId, state }) => {
+      const isLive = state.phase === "live"; // ★ ここ重要（starting を live 扱いしない）
 
-    const publisher =
-      isLive && state.publisherId
-        ? accountRepo.fetchUser(state.publisherId, roomId)
-        : null;
+      const publisher =
+        isLive && state.publisherId
+          ? accountRepo.fetchUser(state.publisherId, roomId)
+          : null;
 
-    return {
-      room: roomId, // ★ roomName → room
-      isLive, // ★ phase で判定
-      publisherName: publisher?.name ?? null,
-      audioOnly: isLive ? !!state.audioOnly : false,
-    };
-  });
+      return {
+        room: roomId, // ★ roomName → room
+        isLive, // ★ phase で判定
+        publisherName: publisher?.name ?? null,
+        publisherId: isLive ? state.publisherId ?? null : null,
+        audioOnly: isLive ? !!state.audioOnly : false,
+      };
+    })
+    .filter((entry) => canViewerSeePublisher(account, entry.publisherId))
+    .map(({ publisherId, ...rest }) => rest);
 
   result.sort((a, b) => String(a.room).localeCompare(String(b.room)));
 
@@ -538,19 +614,26 @@ app.get("/api/live/rooms", liveAuthAnyRoom, (req, res) => {
 
 setInterval(() => {
   const clearedRooms = liveStateRepo.sweepExpiredStarting(90_000);
-  for (const roomId of clearedRooms) {
-    ioServer.to(roomId).emit("live_status_change", {
-      room: roomId,
-      isLive: false,
-      publisherId: null,
-      publisherName: null,
-      audioOnly: false,
+  for (const { roomId, publisherId } of clearedRooms) {
+    if (!publisherId) continue;
+
+    emitLiveStatusChangeFiltered({
+      ioServer,
+      accountRepo,
+      roomId,
+      publisherId,
+      payloadForAllowed: {
+        room: roomId,
+      },
     });
-    ioServer.emit("live_rooms_changed", {
-      room: roomId,
-      isLive: false,
-      publisherName: null,
-      audioOnly: false,
+    emitLiveRoomsChangedFiltered({
+      ioServer,
+      accountRepo,
+      roomId,
+      publisherId,
+      payloadForAllowed: {
+        type: "invalidate",
+      },
     });
   }
 }, 10_000);
@@ -566,6 +649,7 @@ ioServer.on("connection", (socket: Socket): void => {
   const eventSender = new ServerCommunicator({
     server: ioServer,
     systemLogger: systemLogger,
+    accountRepo,
   });
   const eventReceiver = new ClientCommunicator({ socket: socket });
   const presenter = new UserPresenter({
@@ -581,12 +665,16 @@ ioServer.on("connection", (socket: Socket): void => {
   eventReceiver.init();
 });
 
-try {
-  server.listen(3000, () => {
-    logger.info(`Start server...`);
-  });
-} catch (e) {
-  if (e instanceof Error) {
-    logger.error(e.message);
+if (process.env.NODE_ENV !== "test") {
+  try {
+    server.listen(3000, () => {
+      logger.info(`Start server...`);
+    });
+  } catch (e) {
+    if (e instanceof Error) {
+      logger.error(e.message);
+    }
   }
 }
+
+export { app, server };

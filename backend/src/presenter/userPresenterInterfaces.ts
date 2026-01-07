@@ -34,6 +34,17 @@ export interface IServerCommunicator {
     socketId: string
   ): void;
   sendLiveRoomsChanged(param: any, to: string | null): void;
+  sendLiveRoomsChangedFiltered(
+    roomId: string,
+    publisherId: string,
+    payload: any
+  ): void;
+  sendLiveRoomsChangedToSocket(param: any, socketId: string): void;
+  sendLiveStatusChangeFiltered(
+    roomId: string,
+    publisherId: string,
+    payload: LiveStatusChangePayload
+  ): void;
 }
 
 // クライアントからのイベントを定義したインターフェイス
@@ -63,6 +74,7 @@ export interface IClientCommunicator {
 export interface IAccountRepository {
   getAccountBySocketId(socketId: string): Account | undefined;
   getAccountByToken(token?: string): Account | undefined;
+  getAccountByID(id: string): Account | undefined;
   fetchUsers(room: string): USER[];
   fetchUser(id: string, room: string): USER | undefined;
   getRooms(): Room[];
@@ -73,12 +85,23 @@ export interface IAccountRepository {
   // commands
   create(socketId: string, idGenerator?: IDGeneratable): Account;
   updateSocketIdWithValidToken(token: string, socketId: string): void;
+  registerSocketId(accountId: string, socketId: string): void;
+  removeSocketId(socketId: string): void;
+  getSocketIdsByAccountId(accountId: string): Set<string>;
+  setSocketRoom(socketId: string, room: string | null | undefined): void;
+  getSocketRoom(socketId: string): string | undefined;
   updateAlive(id: string, alive: boolean): void;
   updateIsMobile(id: string, isMobile: boolean): void;
   updateLastCommentTime(id: string, now: Date): void;
   getRemainingDelay(id: string, now: Date): number;
   updateCharacter(id: string, character: Character): void;
   speak(id: string, now: Date): boolean;
+  updateIgnore(id: string, targetIhash: string, isActive: boolean): void;
+  findAccountsByIhash(ihash: string): Account[];
+  isIgnored(
+    sourceAccountId: string,
+    targetIhash: string | undefined | null
+  ): boolean;
 }
 
 export interface ISystemReceivedLogger {

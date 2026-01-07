@@ -56,6 +56,10 @@ const ServerMock = vi.fn().mockImplementation(() => {
     sendUsers: vi.fn(),
     sendLiveStatusChange: vi.fn(),
     sendLiveStatusChangeToSocket: vi.fn(),
+    sendLiveRoomsChanged: vi.fn(),
+    sendLiveRoomsChangedToSocket: vi.fn(),
+    sendLiveRoomsChangedFiltered: vi.fn(),
+    sendLiveStatusChangeFiltered: vi.fn(),
   };
 });
 
@@ -87,6 +91,7 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
   return {
     getAccountBySocketId: vi.fn().mockReturnValue(account),
     getAccountByToken: vi.fn().mockReturnValue(account),
+    getAccountByID: vi.fn().mockReturnValue(account),
     fetchUsers: vi.fn().mockReturnValue([{ id: "1" }, { id: "2" }]),
     fetchUser: vi.fn().mockReturnValue({
       id: "id",
@@ -111,11 +116,20 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
     getStatBannedIhashes: vi.fn().mockReturnValue(["BANIHASH"]),
     create: vi.fn().mockReturnValue(account),
     updateSocketIdWithValidToken: vi.fn(),
+    registerSocketId: vi.fn(),
+    removeSocketId: vi.fn(),
+    getSocketIdsByAccountId: vi.fn().mockReturnValue(new Set()),
+    setSocketRoom: vi.fn(),
+    getSocketRoom: vi.fn().mockReturnValue(undefined),
     updateAlive: vi.fn(),
     updateIsMobile: vi.fn(),
     updateLastCommentTime: vi.fn(),
     updateCharacter: vi.fn(),
     speak: vi.fn().mockReturnValue(true),
+    updateIgnore: vi.fn(),
+    isIgnored: vi.fn().mockReturnValue(false),
+    findAccountsByIhash: vi.fn().mockReturnValue([]),
+    __account: account,
   };
 });
 
@@ -841,7 +855,114 @@ describe("#receivedIG", () => {
       clientInfo
     );
     expect(server.sendIG).toBeCalledTimes(1);
-    // expect(server.sendIG).toBeCalledWith({})
+  });
+
+  it("sends invalidate to self and target sockets on ignore toggle", () => {
+    const selfAccount = (accountRep as any).__account as Account;
+    selfAccount.socketId = "self-socket";
+
+    // authorizeが新規作成に逃げないよう固定
+    accountRep.getAccountByToken = vi.fn().mockReturnValue(selfAccount);
+    accountRep.create = vi.fn(() => {
+      throw new Error("create should not be called in this test");
+    });
+
+    // target は「socketId を持つ Account」であればよい（instantiate依存を断つ）
+    const targetAccount = Account.instantiate({
+      idGenerator: { generate: () => "target" } as IDGeneratable,
+      socketId: "dummy",
+    } as any);
+    targetAccount.socketId = "target-socket";
+
+    // 送信対象の解決
+    accountRep.getAccountByID = vi.fn().mockImplementation((id: string) => {
+      return id === selfAccount.id ? selfAccount : undefined;
+    });
+    accountRep.findAccountsByIhash = vi.fn().mockReturnValue([targetAccount]);
+    accountRep.getSocketIdsByAccountId = vi.fn().mockImplementation((id: string) => {
+      if (id === selfAccount.id) return new Set(["self-socket"]);
+      if (id === targetAccount.id) return new Set(["target-socket"]);
+      return new Set();
+    });
+    accountRep.getSocketRoom = vi.fn().mockImplementation((socketId: string) => {
+      if (socketId === "self-socket") return "/1";
+      if (socketId === "target-socket") return "/1";
+      return undefined;
+    });
+
+    presenter.receivedIG(
+      { token: "hogeToken", stat: "on", ihash: "target-ihash" },
+      clientInfo
+    );
+
+    expect(accountRep.findAccountsByIhash).toHaveBeenCalledWith("target-ihash");
+
+    const calls = (server.sendLiveRoomsChangedToSocket as any).mock
+      .calls as Array<[{ type: string }, string]>;
+
+    // 回数
+    expect(calls).toHaveLength(2);
+
+    // payload は全部 invalidate
+    expect(calls.every(([p]) => p.type === "invalidate")).toBe(true);
+
+    // 宛先は self と target の集合（順序非依存）
+    expect(new Set(calls.map(([, sid]) => sid))).toEqual(
+      new Set(["self-socket", "target-socket"])
+    );
+  });
+
+  it("sends invalidate to all sockets and room-limited status invalidation", () => {
+    const selfAccount = (accountRep as any).__account as Account;
+    selfAccount.socketId = "self-socket-a";
+
+    accountRep.getAccountByToken = vi.fn().mockReturnValue(selfAccount);
+    accountRep.create = vi.fn(() => {
+      throw new Error("create should not be called in this test");
+    });
+
+    const targetAccount = Account.instantiate({
+      idGenerator: { generate: () => "target" } as IDGeneratable,
+      socketId: "dummy",
+    } as any);
+    targetAccount.socketId = "target-socket-a";
+
+    accountRep.getAccountByID = vi.fn().mockImplementation((id: string) => {
+      return id === selfAccount.id ? selfAccount : undefined;
+    });
+    accountRep.findAccountsByIhash = vi.fn().mockReturnValue([targetAccount]);
+    accountRep.getSocketIdsByAccountId = vi.fn().mockImplementation((id: string) => {
+      if (id === selfAccount.id) return new Set(["self-socket-a", "self-socket-b"]);
+      if (id === targetAccount.id) return new Set(["target-socket-a", "target-socket-b"]);
+      return new Set();
+    });
+    accountRep.getSocketRoom = vi.fn().mockImplementation((socketId: string) => {
+      if (socketId === "self-socket-a") return "/1";
+      if (socketId === "target-socket-a") return "/1";
+      if (socketId === "self-socket-b") return "/2";
+      return undefined;
+    });
+
+    presenter.receivedIG(
+      { token: "hogeToken", stat: "on", ihash: "target-ihash" },
+      clientInfo
+    );
+
+    const roomCalls = (server.sendLiveRoomsChangedToSocket as any).mock
+      .calls as Array<[{ type: string }, string]>;
+    expect(roomCalls).toHaveLength(4);
+    expect(roomCalls.every(([payload]) => payload.type === "invalidate")).toBe(true);
+    expect(new Set(roomCalls.map(([, sid]) => sid))).toEqual(
+      new Set(["self-socket-a", "self-socket-b", "target-socket-a", "target-socket-b"])
+    );
+
+    const statusCalls = (server.sendLiveStatusChangeToSocket as any).mock
+      .calls as Array<[{ room: string }, string]>;
+    expect(statusCalls).toHaveLength(2);
+    expect(statusCalls.every(([payload]) => payload.room === "/1")).toBe(true);
+    expect(new Set(statusCalls.map(([, sid]) => sid))).toEqual(
+      new Set(["self-socket-a", "target-socket-a"])
+    );
   });
 });
 
@@ -881,6 +1002,7 @@ describe("#receivedSUICIDE", () => {
 describe("#receivedDisconnect", () => {
   it("正常系", () => {
     presenter.receivedDisconnect("server shutting down", clientInfo);
+    expect(accountRep.removeSocketId).toBeCalledTimes(1);
     expect(accountRep.updateAlive).toBeCalledTimes(1);
     expect(server.sendSLEEP).toBeCalledTimes(1);
     expect(systemLogger.logReceivedDisconnect).toBeCalledTimes(1);
@@ -895,6 +1017,7 @@ describe("#receivedDisconnect", () => {
     accountRep.getAccountBySocketId = vi.fn().mockReturnValue(account);
     accountRep.getAccountByToken = vi.fn().mockReturnValue(undefined);
     presenter.receivedDisconnect("server shutting down", clientInfo);
+    expect(accountRep.removeSocketId).toBeCalledTimes(1);
     expect(accountRep.updateAlive).toBeCalledTimes(1);
     expect(server.sendSLEEP).toBeCalledTimes(0);
     expect(systemLogger.logReceivedDisconnect).toBeCalledTimes(1);
@@ -905,6 +1028,7 @@ describe("#receivedDisconnect", () => {
     accountRep.getAccountBySocketId = vi.fn().mockReturnValue(undefined);
     presenter.receivedDisconnect("server shutting down", clientInfo);
     expect(systemLogger.logReceivedDisconnect).toBeCalledTimes(1);
+    expect(accountRep.removeSocketId).toBeCalledTimes(1);
     expect(accountRep.updateCharacter).toBeCalledTimes(0);
     expect(server.sendSLEEP).toBeCalledTimes(0);
   });
@@ -913,6 +1037,7 @@ describe("#receivedDisconnect", () => {
 describe("#receivedJoiningRoom", () => {
   it("正常系", () => {
     presenter.completedJoiningRoom("/1", clientInfo);
+    expect(accountRep.setSocketRoom).toBeCalledTimes(1);
     expect(accountRep.updateCharacter).toBeCalledTimes(1);
   });
 

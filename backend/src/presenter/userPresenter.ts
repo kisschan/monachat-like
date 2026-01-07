@@ -244,12 +244,15 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const account = this.authorize(req.token, clientInfo.socketId);
     const currentRoom = account.character.currentRoom;
     if (currentRoom == null) return;
+    const ignores = req.stat === "on";
+    this.accountRep.updateIgnore(account.id, req.ihash, ignores);
     const res: IGResponse = {
       id: account.id,
       stat: req.stat,
       ihash: req.ihash,
     };
     this.serverCommunicator.sendIG(res, currentRoom);
+    this.invalidateLiveVisibility(currentRoom, account.id, req.ihash);
   }
 
   receivedAUTH(req: AUTHRequest, clientInfo: ClientInfo): void {
@@ -297,7 +300,11 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   receivedDisconnect(reason: string, clientInfo: ClientInfo): void {
     this.systemLogger.logReceivedDisconnect(reason, clientInfo);
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
+    this.accountRep.removeSocketId(clientInfo.socketId);
     if (account == null) return;
+
+    const remainingSockets = this.accountRep.getSocketIdsByAccountId(account.id);
+    if (remainingSockets.size > 0) return;
 
     this.accountRep.updateAlive(account.id, false);
     const currentRoom = account.character.currentRoom;
@@ -316,6 +323,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
     if (account == null) return;
 
+    this.accountRep.setSocketRoom(clientInfo.socketId, room);
     this.accountRep.updateCharacter(
       account.id,
       account.character.copy().moveRoom(room)
@@ -323,26 +331,46 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const rooms = this.accountRep.getRooms();
     this.notifyRoomsChanged(rooms);
 
-    // ここでライブ状態を push（入室者が見るべき“現状態”を必ず送る）
     const live = this.liveStateRepo.get(room);
 
-    let publisherName: string | null = null;
-    if (live.publisherId) {
-      const publisher = this.accountRep.fetchUser(live.publisherId, room);
-      publisherName = publisher?.name ?? null;
+    // ライブ無し：これは秘匿不要なので詳細でOK（ただし好みで {room} invalidate に寄せても良い）
+    if (!live.publisherId) {
+      this.serverCommunicator.sendLiveStatusChangeToSocket(
+        {
+          room,
+          isLive: false,
+          publisherId: null,
+          publisherName: null,
+          audioOnly: false,
+        },
+        clientInfo.socketId
+      );
+      return;
     }
 
-    const isLive = !!live.publisherId;
+    const publisherId = live.publisherId;
+
+    // 無視関係：存在秘匿（invalidate-only）
+    if (!this.canViewerSeePublisher(room, account.id, publisherId)) {
+      this.serverCommunicator.sendLiveStatusChangeToSocket(
+        { room },
+        clientInfo.socketId
+      );
+      return;
+    }
+
+    // 許可：即時表示（詳細push）
+    const publisher = this.accountRep.fetchUser(publisherId, room);
+    const publisherName = publisher?.name ?? null;
 
     const payload: LiveStatusChangePayload = {
       room,
-      isLive,
-      publisherId: live.publisherId ?? null,
+      isLive: true,
+      publisherId,
       publisherName,
-      audioOnly: isLive ? live.audioOnly ?? false : false,
+      audioOnly: live.audioOnly ?? false,
     };
 
-    // 重要：入室者だけに送る
     this.serverCommunicator.sendLiveStatusChangeToSocket(
       payload,
       clientInfo.socketId
@@ -353,6 +381,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   private authorize(token: string | undefined, socketId: string): Account {
     const existingAccount = this.accountRep.getAccountByToken(token);
     if (existingAccount !== undefined) {
+      this.accountRep.registerSocketId(existingAccount.id, socketId);
       return existingAccount;
     }
     const account = this.accountRep.create(socketId);
@@ -361,6 +390,44 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       token: account.token,
     });
     return account;
+  }
+
+  private invalidateLiveVisibility(
+    room: string,
+    sourceAccountId: string,
+    targetIhash: string | undefined
+  ): void {
+    const socketIds = new Set<string>();
+    const remember = (a: Account | undefined) => {
+      if (!a) return;
+      for (const socketId of this.accountRep.getSocketIdsByAccountId(a.id)) {
+        socketIds.add(socketId);
+      }
+    };
+
+    remember(this.accountRep.getAccountByID(sourceAccountId));
+
+    if (targetIhash) {
+      for (const t of this.accountRep.findAccountsByIhash(targetIhash)) {
+        remember(t);
+      }
+    }
+
+    for (const socketId of socketIds) {
+      // 一覧 invalidate（room無し）は常に送る
+      this.serverCommunicator.sendLiveRoomsChangedToSocket(
+        { type: "invalidate" },
+        socketId
+      );
+
+      // LiveArea 再評価（room内の socket のみ）
+      if (this.accountRep.getSocketRoom(socketId) === room) {
+        this.serverCommunicator.sendLiveStatusChangeToSocket(
+          { room },
+          socketId
+        );
+      }
+    }
   }
 
   private notifyRoomsChanged(rooms: Room[]): void {
@@ -383,28 +450,48 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
 
     const state = this.liveStateRepo.get(room);
     if (!state || state.publisherId !== accountId) return;
-
+    const publisherId = state.publisherId;
     this.liveStateRepo.clear(room);
 
-    this.serverCommunicator.sendLiveStatusChange(
-      {
+    if (publisherId) {
+      this.serverCommunicator.sendLiveStatusChangeFiltered(room, publisherId, {
         room,
-        isLive: false,
-        publisherId: null,
-        publisherName: null,
-        audioOnly: false,
-      },
-      room
+      });
+
+      this.serverCommunicator.sendLiveRoomsChangedFiltered(room, publisherId, {
+        type: "invalidate",
+      });
+    }
+  }
+
+  private canViewerSeePublisher(
+    _room: string,
+    viewerId: string,
+    publisherId: string
+  ): boolean {
+    if (viewerId === publisherId) return true;
+
+    const viewer = this.accountRep.getAccountByID(viewerId);
+    const publisher = this.accountRep.getAccountByID(publisherId);
+
+    // 秘匿優先：情報が欠けたら見せない
+    if (!viewer || !publisher) return false;
+
+    const viewerIhash = viewer.character.avatar.whiteTrip?.value;
+    const publisherIhash = publisher.character.avatar.whiteTrip?.value;
+
+    // 秘匿優先：ihash が欠けたら見せない（ここは要件次第だが、conceal重視ならfalse推奨）
+    if (!viewerIhash || !publisherIhash) return false;
+
+    const viewerIgnoresPublisher = this.accountRep.isIgnored(
+      viewerId,
+      publisherIhash
+    );
+    const publisherIgnoresViewer = this.accountRep.isIgnored(
+      publisherId,
+      viewerIhash
     );
 
-    this.serverCommunicator.sendLiveRoomsChanged(
-      {
-        room: room,
-        isLive: false,
-        publisherName: null,
-        audioOnly: false,
-      },
-      null
-    );
+    return !(viewerIgnoresPublisher || publisherIgnoresViewer);
   }
 }

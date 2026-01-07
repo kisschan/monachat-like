@@ -13,13 +13,20 @@ export type LiveStatusResponse = {
 
 export async function fetchLiveStatus(roomId: string, token: string): Promise<LiveStatusResponse> {
   const encodedRoom = encodeURIComponent(roomId);
-  const res = await axios.get<LiveStatusResponse>(
-    joinUrl(import.meta.env.VITE_APP_API_HOST, "api", "live", encodedRoom, "status"),
-    {
-      headers: { "X-Monachat-Token": token },
-    },
-  );
-  return res.data;
+  try {
+    const res = await axios.get<LiveStatusResponse>(
+      joinUrl(import.meta.env.VITE_APP_API_HOST, "api", "live", encodedRoom, "status"),
+      {
+        headers: { "X-Monachat-Token": token },
+      },
+    );
+    return res.data;
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 404) {
+      return { isLive: false, publisherId: null, publisherName: null, audioOnly: false };
+    }
+    throw e;
+  }
 }
 export async function startLive(roomId: string, token: string, audioOnly: boolean): Promise<void> {
   const base = import.meta.env.VITE_APP_API_HOST;
