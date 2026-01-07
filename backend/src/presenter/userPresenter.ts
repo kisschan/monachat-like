@@ -252,7 +252,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       ihash: req.ihash,
     };
     this.serverCommunicator.sendIG(res, currentRoom);
-    this.invalidateLiveVisibility(account.id, req.ihash);
+    this.invalidateLiveVisibility(currentRoom, account.id, req.ihash);
   }
 
   receivedAUTH(req: AUTHRequest, clientInfo: ClientInfo): void {
@@ -387,28 +387,47 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   }
 
   private invalidateLiveVisibility(
+    room: string,
     sourceAccountId: string,
     targetIhash: string | undefined
   ): void {
-    const socketIds = new Set<string>();
+    // socketId -> その時点の currentRoom を持っておく（room外へ {room} を送らないため）
+    const socketRoomBySocketId = new Map<string, string>();
 
     const sourceAccount = this.accountRep.getAccountByID(sourceAccountId);
-    if (sourceAccount?.socketId) socketIds.add(sourceAccount.socketId);
+    if (sourceAccount?.socketId && sourceAccount.character.currentRoom) {
+      socketRoomBySocketId.set(
+        sourceAccount.socketId,
+        sourceAccount.character.currentRoom
+      );
+    }
 
     if (targetIhash) {
       const targets = this.accountRep.findAccountsByIhash(targetIhash);
       for (const target of targets) {
-        if (target?.socketId) {
-          socketIds.add(target.socketId);
+        if (target?.socketId && target.character.currentRoom) {
+          socketRoomBySocketId.set(
+            target.socketId,
+            target.character.currentRoom
+          );
         }
       }
     }
 
-    for (const socketId of socketIds) {
+    for (const [socketId, socketRoom] of socketRoomBySocketId.entries()) {
+      // 一覧invalidate（room無し）: これは従来通り
       this.serverCommunicator.sendLiveRoomsChangedToSocket(
         { type: "invalidate" },
         socketId
       );
+
+      // 追加：部屋内LiveAreaの即時再評価を促す（room外には送らない）
+      if (socketRoom === room) {
+        this.serverCommunicator.sendLiveStatusChangeToSocket(
+          { room },
+          socketId
+        );
+      }
     }
   }
 
@@ -436,17 +455,13 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     this.liveStateRepo.clear(room);
 
     if (publisherId) {
-      this.serverCommunicator.sendLiveStatusChangeFiltered(
+      this.serverCommunicator.sendLiveStatusChangeFiltered(room, publisherId, {
         room,
-        publisherId,
-        { room }
-      );
+      });
 
-      this.serverCommunicator.sendLiveRoomsChangedFiltered(
+      this.serverCommunicator.sendLiveRoomsChangedFiltered(room, publisherId, {
         room,
-        publisherId,
-        { room }
-      );
+      });
     }
   }
 

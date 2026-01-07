@@ -763,13 +763,17 @@ const handleLiveStatusChange = (payload: LiveStatusChangePayload) => {
       publishHandle.value = null;
     }
   } else if (inSameRoom) {
-    void loadStatus().catch((e) => logErrorSafe("failed to reload live status after socket", e));
-  }
+    void (async () => {
+      try {
+        await loadStatus();
+      } catch (e) {
+        logErrorSafe("failed to reload live status after socket", e);
 
-  if (isReadyToLoadLiveRooms.value) {
-    void liveRoomsStore.load("live-status-change").catch((e) =>
-      logErrorSafe("failed to reload live rooms after status change", e),
-    );
+        // 重要：invalidate を受けたのに status が取れないなら fail-close
+        // blocked conceal (404) / webrtc-config conceal / transient error を区別せず「見えない側」に倒す
+        await applyNotLiveAndTearDown("socket-invalidate-loadStatus-failed");
+      }
+    })();
   }
 };
 
@@ -780,6 +784,28 @@ const onSocketConnect = () => {
 const onVisibilityChange = () => {
   if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
     void liveRoomsStore.load("visibility-change").catch(() => {});
+  }
+};
+
+const applyNotLiveAndTearDown = async (reason: string) => {
+  console.debug("applyNotLiveAndTearDown", reason);
+
+  // 状態を必ず「非ライブ」に倒す（秘匿要件）
+  isLive.value = false;
+  publisherId.value = null;
+  publisherName.value = null;
+  isAudioOnlyLive.value = false;
+
+  // 視聴停止
+  if (subscribeHandle.value) {
+    await subscribeHandle.value.stop().catch(() => {});
+    subscribeHandle.value = null;
+  }
+
+  // 配信側も念のため止める（自分が配信者でブロック関係が変わるケース等の保険）
+  if (publishHandle.value) {
+    await publishHandle.value.stop().catch(() => {});
+    publishHandle.value = null;
   }
 };
 
