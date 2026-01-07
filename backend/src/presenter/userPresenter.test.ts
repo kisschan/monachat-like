@@ -850,40 +850,51 @@ describe("#receivedIG", () => {
       clientInfo
     );
     expect(server.sendIG).toBeCalledTimes(1);
-    // expect(server.sendIG).toBeCalledWith({})
   });
 
   it("sends invalidate to self and target sockets on ignore toggle", () => {
     const selfAccount = (accountRep as any).__account as Account;
     selfAccount.socketId = "self-socket";
 
+    // authorizeが新規作成に逃げないよう固定
+    accountRep.getAccountByToken = vi.fn().mockReturnValue(selfAccount);
+    accountRep.create = vi.fn(() => {
+      throw new Error("create should not be called in this test");
+    });
+
+    // target は「socketId を持つ Account」であればよい（instantiate依存を断つ）
     const targetAccount = Account.instantiate({
       idGenerator: { generate: () => "target" } as IDGeneratable,
-      socketId: "target-socket",
+      socketId: "dummy",
+    } as any);
+    targetAccount.socketId = "target-socket";
+
+    // 送信対象の解決
+    accountRep.getAccountByID = vi.fn().mockImplementation((id: string) => {
+      return id === selfAccount.id ? selfAccount : undefined;
     });
-    accountRep.getAccountByID = vi
-      .fn()
-      .mockImplementation((id: string) =>
-        id === selfAccount.id ? selfAccount : targetAccount
-      );
-    accountRep.findAccountsByIhash = vi
-      .fn()
-      .mockReturnValue([targetAccount]);
+    accountRep.findAccountsByIhash = vi.fn().mockReturnValue([targetAccount]);
 
     presenter.receivedIG(
       { token: "hogeToken", stat: "on", ihash: "target-ihash" },
       clientInfo
     );
 
-    expect(server.sendLiveRoomsChangedToSocket).toHaveBeenCalledWith(
-      { type: "invalidate" },
-      "self-socket"
+    expect(accountRep.findAccountsByIhash).toHaveBeenCalledWith("target-ihash");
+
+    const calls = (server.sendLiveRoomsChangedToSocket as any).mock
+      .calls as Array<[{ type: string }, string]>;
+
+    // 回数
+    expect(calls).toHaveLength(2);
+
+    // payload は全部 invalidate
+    expect(calls.every(([p]) => p.type === "invalidate")).toBe(true);
+
+    // 宛先は self と target の集合（順序非依存）
+    expect(new Set(calls.map(([, sid]) => sid))).toEqual(
+      new Set(["self-socket", "target-socket"])
     );
-    expect(server.sendLiveRoomsChangedToSocket).toHaveBeenCalledWith(
-      { type: "invalidate" },
-      "target-socket"
-    );
-    expect(server.sendLiveRoomsChangedToSocket).toHaveBeenCalledTimes(2);
   });
 });
 

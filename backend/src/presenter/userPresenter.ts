@@ -391,38 +391,33 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     sourceAccountId: string,
     targetIhash: string | undefined
   ): void {
-    // socketId -> その時点の currentRoom を持っておく（room外へ {room} を送らないため）
-    const socketRoomBySocketId = new Map<string, string>();
+    const socketIds = new Set<string>();
+    const roomBySocketId = new Map<string, string>();
 
-    const sourceAccount = this.accountRep.getAccountByID(sourceAccountId);
-    if (sourceAccount?.socketId && sourceAccount.character.currentRoom) {
-      socketRoomBySocketId.set(
-        sourceAccount.socketId,
-        sourceAccount.character.currentRoom
-      );
-    }
+    const remember = (a: Account | undefined) => {
+      if (!a?.socketId) return;
+      socketIds.add(a.socketId);
+      const cr = a.character?.currentRoom;
+      if (cr) roomBySocketId.set(a.socketId, cr);
+    };
+
+    remember(this.accountRep.getAccountByID(sourceAccountId));
 
     if (targetIhash) {
-      const targets = this.accountRep.findAccountsByIhash(targetIhash);
-      for (const target of targets) {
-        if (target?.socketId && target.character.currentRoom) {
-          socketRoomBySocketId.set(
-            target.socketId,
-            target.character.currentRoom
-          );
-        }
+      for (const t of this.accountRep.findAccountsByIhash(targetIhash)) {
+        remember(t);
       }
     }
 
-    for (const [socketId, socketRoom] of socketRoomBySocketId.entries()) {
-      // 一覧invalidate（room無し）: これは従来通り
+    for (const socketId of socketIds) {
+      // 一覧 invalidate（room無し）は常に送る
       this.serverCommunicator.sendLiveRoomsChangedToSocket(
         { type: "invalidate" },
         socketId
       );
 
-      // 追加：部屋内LiveAreaの即時再評価を促す（room外には送らない）
-      if (socketRoom === room) {
+      // LiveArea 再評価（room内の socket のみ）
+      if (roomBySocketId.get(socketId) === room) {
         this.serverCommunicator.sendLiveStatusChangeToSocket(
           { room },
           socketId
