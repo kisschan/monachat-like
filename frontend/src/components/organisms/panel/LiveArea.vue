@@ -377,6 +377,11 @@ const loadStatusFor = async (ctx: { roomId: string; token: string }) => {
   publisherName.value = res.publisherName;
   publisherId.value = res.publisherId;
   isAudioOnlyLive.value = res.audioOnly ?? false;
+
+  if (!res.isLive && subscribeHandle.value) {
+    subscribeHandle.value.stop().catch(() => {});
+    subscribeHandle.value = null;
+  }
 };
 
 const loadStatus = async () => {
@@ -387,6 +392,11 @@ const loadStatus = async () => {
   publisherName.value = res.publisherName;
   publisherId.value = res.publisherId;
   isAudioOnlyLive.value = res.audioOnly ?? false;
+
+  if (!res.isLive && subscribeHandle.value) {
+    subscribeHandle.value.stop().catch(() => {});
+    subscribeHandle.value = null;
+  }
 };
 
 const isPublishAudioOnly = computed(() => publishMode.value === "audio");
