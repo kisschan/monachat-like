@@ -300,7 +300,11 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   receivedDisconnect(reason: string, clientInfo: ClientInfo): void {
     this.systemLogger.logReceivedDisconnect(reason, clientInfo);
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
+    this.accountRep.removeSocketId(clientInfo.socketId);
     if (account == null) return;
+
+    const remainingSockets = this.accountRep.getSocketIdsByAccountId(account.id);
+    if (remainingSockets.size > 0) return;
 
     this.accountRep.updateAlive(account.id, false);
     const currentRoom = account.character.currentRoom;
@@ -319,6 +323,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     const account = this.accountRep.getAccountBySocketId(clientInfo.socketId);
     if (account == null) return;
 
+    this.accountRep.setSocketRoom(clientInfo.socketId, room);
     this.accountRep.updateCharacter(
       account.id,
       account.character.copy().moveRoom(room)
@@ -376,6 +381,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
   private authorize(token: string | undefined, socketId: string): Account {
     const existingAccount = this.accountRep.getAccountByToken(token);
     if (existingAccount !== undefined) {
+      this.accountRep.registerSocketId(existingAccount.id, socketId);
       return existingAccount;
     }
     const account = this.accountRep.create(socketId);
@@ -392,13 +398,11 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
     targetIhash: string | undefined
   ): void {
     const socketIds = new Set<string>();
-    const roomBySocketId = new Map<string, string>();
-
     const remember = (a: Account | undefined) => {
-      if (!a?.socketId) return;
-      socketIds.add(a.socketId);
-      const cr = a.character?.currentRoom;
-      if (cr) roomBySocketId.set(a.socketId, cr);
+      if (!a) return;
+      for (const socketId of this.accountRep.getSocketIdsByAccountId(a.id)) {
+        socketIds.add(socketId);
+      }
     };
 
     remember(this.accountRep.getAccountByID(sourceAccountId));
@@ -417,7 +421,7 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       );
 
       // LiveArea 再評価（room内の socket のみ）
-      if (roomBySocketId.get(socketId) === room) {
+      if (this.accountRep.getSocketRoom(socketId) === room) {
         this.serverCommunicator.sendLiveStatusChangeToSocket(
           { room },
           socketId
@@ -455,26 +459,26 @@ export class UserPresenter implements IEventHandler, IServerNotificator {
       });
 
       this.serverCommunicator.sendLiveRoomsChangedFiltered(room, publisherId, {
-        room,
+        type: "invalidate",
       });
     }
   }
 
   private canViewerSeePublisher(
-    room: string,
+    _room: string,
     viewerId: string,
     publisherId: string
   ): boolean {
     if (viewerId === publisherId) return true;
 
-    const viewer = this.accountRep.fetchUser(viewerId, room);
-    const publisher = this.accountRep.fetchUser(publisherId, room);
+    const viewer = this.accountRep.getAccountByID(viewerId);
+    const publisher = this.accountRep.getAccountByID(publisherId);
 
     // 秘匿優先：情報が欠けたら見せない
     if (!viewer || !publisher) return false;
 
-    const viewerIhash = viewer.ihash;
-    const publisherIhash = publisher.ihash;
+    const viewerIhash = viewer.character.avatar.whiteTrip?.value;
+    const publisherIhash = publisher.character.avatar.whiteTrip?.value;
 
     // 秘匿優先：ihash が欠けたら見せない（ここは要件次第だが、conceal重視ならfalse推奨）
     if (!viewerIhash || !publisherIhash) return false;

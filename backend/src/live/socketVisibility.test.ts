@@ -70,7 +70,7 @@ describe("socketVisibility filtered emitters", () => {
     accountRepo.deleteAll();
   });
 
-  it("does not send live_rooms_changed to blocked viewers", () => {
+  it("sends invalidate live_rooms_changed to blocked viewers", () => {
     const publisher = createAccount({
       id: "publisher",
       token: "pub-token",
@@ -118,14 +118,17 @@ describe("socketVisibility filtered emitters", () => {
       accountRepo,
       roomId: room,
       publisherId: publisher.account.id,
-      payloadForAllowed: { room },
+      payloadForAllowed: { type: "invalidate" },
     });
 
     expect(allowedSocket.emit).toHaveBeenCalledTimes(1);
     expect(allowedSocket.emit).toHaveBeenCalledWith("live_rooms_changed", {
-      room,
+      type: "invalidate",
     });
-    expect(blockedSocket.emit).not.toHaveBeenCalled();
+    expect(blockedSocket.emit).toHaveBeenCalledTimes(1);
+    expect(blockedSocket.emit).toHaveBeenCalledWith("live_rooms_changed", {
+      type: "invalidate",
+    });
   });
 
   it("does not send live_status_change to blocked viewers in the room", () => {
@@ -182,14 +185,18 @@ describe("socketVisibility filtered emitters", () => {
       accountRepo,
       roomId: room,
       publisherId: publisher.account.id,
-      payloadForAllowed: { room },
+      payloadForAllowed: { room, isLive: true, publisherId: publisher.account.id },
     });
 
     expect(allowedSocket.emit).toHaveBeenCalledTimes(1);
     expect(allowedSocket.emit).toHaveBeenCalledWith("live_status_change", {
       room,
+      isLive: true,
+      publisherId: publisher.account.id,
     });
-    expect(blockedSocket.emit).not.toHaveBeenCalled();
+    expect(blockedSocket.emit).toHaveBeenCalledWith("live_status_change", {
+      room,
+    });
     expect(otherRoomSocket.emit).not.toHaveBeenCalled();
   });
 });

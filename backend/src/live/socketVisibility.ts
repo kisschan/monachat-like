@@ -25,6 +25,7 @@ export function canViewerSeePublisherAccounts(
   accountRepo: AccountRepository
 ): boolean {
   if (!viewerAccount || !publisherAccount) return false;
+  if (viewerAccount.id === publisherAccount.id) return true;
 
   const viewerIhash = viewerAccount.character.avatar.whiteTrip?.value ?? null;
   const publisherIhash = publisherAccount.character.avatar.whiteTrip?.value ?? null;
@@ -46,22 +47,16 @@ export function canViewerSeePublisherAccounts(
 export function emitLiveRoomsChangedFiltered({
   ioServer,
   accountRepo,
-  roomId,
-  publisherId,
+  roomId: _roomId,
+  publisherId: _publisherId,
   payloadForAllowed,
 }: LiveRoomsChangedParams): void {
-  const publisherAccount = accountRepo.getAccountByID(publisherId);
-  if (!publisherAccount) return;
-
+  void accountRepo;
+  void _roomId;
+  void _publisherId;
   for (const [socketId, socket] of ioServer.sockets.sockets) {
-    sendIfVisible({
-      socket,
-      socketId,
-      accountRepo,
-      publisherAccount,
-      event: "live_rooms_changed",
-      payload: payloadForAllowed,
-    });
+    void socketId;
+    socket.emit("live_rooms_changed", payloadForAllowed);
   }
 }
 
@@ -84,6 +79,7 @@ export function emitLiveStatusChangeFiltered({
       publisherAccount,
       event: "live_status_change",
       payload: payloadForAllowed,
+      payloadForBlocked: { room: roomId },
     });
   }
 }
@@ -95,6 +91,7 @@ function sendIfVisible({
   publisherAccount,
   event,
   payload,
+  payloadForBlocked,
 }: {
   socket: Socket;
   socketId: string;
@@ -102,11 +99,15 @@ function sendIfVisible({
   publisherAccount: Account;
   event: "live_rooms_changed" | "live_status_change";
   payload: any;
+  payloadForBlocked?: any;
 }): void {
   const viewerAccount = accountRepo.getAccountBySocketId(socketId);
   if (
     !canViewerSeePublisherAccounts(viewerAccount, publisherAccount, accountRepo)
   ) {
+    if (payloadForBlocked !== undefined) {
+      socket.emit(event, payloadForBlocked);
+    }
     return;
   }
   socket.emit(event, payload);

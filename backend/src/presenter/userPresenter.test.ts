@@ -116,6 +116,11 @@ const AccountRepositoryMock = vi.fn().mockImplementation(() => {
     getStatBannedIhashes: vi.fn().mockReturnValue(["BANIHASH"]),
     create: vi.fn().mockReturnValue(account),
     updateSocketIdWithValidToken: vi.fn(),
+    registerSocketId: vi.fn(),
+    removeSocketId: vi.fn(),
+    getSocketIdsByAccountId: vi.fn().mockReturnValue(new Set()),
+    setSocketRoom: vi.fn(),
+    getSocketRoom: vi.fn().mockReturnValue(undefined),
     updateAlive: vi.fn(),
     updateIsMobile: vi.fn(),
     updateLastCommentTime: vi.fn(),
@@ -874,6 +879,16 @@ describe("#receivedIG", () => {
       return id === selfAccount.id ? selfAccount : undefined;
     });
     accountRep.findAccountsByIhash = vi.fn().mockReturnValue([targetAccount]);
+    accountRep.getSocketIdsByAccountId = vi.fn().mockImplementation((id: string) => {
+      if (id === selfAccount.id) return new Set(["self-socket"]);
+      if (id === targetAccount.id) return new Set(["target-socket"]);
+      return new Set();
+    });
+    accountRep.getSocketRoom = vi.fn().mockImplementation((socketId: string) => {
+      if (socketId === "self-socket") return "/1";
+      if (socketId === "target-socket") return "/1";
+      return undefined;
+    });
 
     presenter.receivedIG(
       { token: "hogeToken", stat: "on", ihash: "target-ihash" },
@@ -934,6 +949,7 @@ describe("#receivedSUICIDE", () => {
 describe("#receivedDisconnect", () => {
   it("正常系", () => {
     presenter.receivedDisconnect("server shutting down", clientInfo);
+    expect(accountRep.removeSocketId).toBeCalledTimes(1);
     expect(accountRep.updateAlive).toBeCalledTimes(1);
     expect(server.sendSLEEP).toBeCalledTimes(1);
     expect(systemLogger.logReceivedDisconnect).toBeCalledTimes(1);
@@ -948,6 +964,7 @@ describe("#receivedDisconnect", () => {
     accountRep.getAccountBySocketId = vi.fn().mockReturnValue(account);
     accountRep.getAccountByToken = vi.fn().mockReturnValue(undefined);
     presenter.receivedDisconnect("server shutting down", clientInfo);
+    expect(accountRep.removeSocketId).toBeCalledTimes(1);
     expect(accountRep.updateAlive).toBeCalledTimes(1);
     expect(server.sendSLEEP).toBeCalledTimes(0);
     expect(systemLogger.logReceivedDisconnect).toBeCalledTimes(1);
@@ -958,6 +975,7 @@ describe("#receivedDisconnect", () => {
     accountRep.getAccountBySocketId = vi.fn().mockReturnValue(undefined);
     presenter.receivedDisconnect("server shutting down", clientInfo);
     expect(systemLogger.logReceivedDisconnect).toBeCalledTimes(1);
+    expect(accountRep.removeSocketId).toBeCalledTimes(1);
     expect(accountRep.updateCharacter).toBeCalledTimes(0);
     expect(server.sendSLEEP).toBeCalledTimes(0);
   });
@@ -966,6 +984,7 @@ describe("#receivedDisconnect", () => {
 describe("#receivedJoiningRoom", () => {
   it("正常系", () => {
     presenter.completedJoiningRoom("/1", clientInfo);
+    expect(accountRep.setSocketRoom).toBeCalledTimes(1);
     expect(accountRep.updateCharacter).toBeCalledTimes(1);
   });
 

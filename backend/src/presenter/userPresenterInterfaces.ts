@@ -85,6 +85,11 @@ export interface IAccountRepository {
   // commands
   create(socketId: string, idGenerator?: IDGeneratable): Account;
   updateSocketIdWithValidToken(token: string, socketId: string): void;
+  registerSocketId(accountId: string, socketId: string): void;
+  removeSocketId(socketId: string): void;
+  getSocketIdsByAccountId(accountId: string): Set<string>;
+  setSocketRoom(socketId: string, room: string | null | undefined): void;
+  getSocketRoom(socketId: string): string | undefined;
   updateAlive(id: string, alive: boolean): void;
   updateIsMobile(id: string, isMobile: boolean): void;
   updateLastCommentTime(id: string, now: Date): void;

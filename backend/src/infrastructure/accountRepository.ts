@@ -10,10 +10,16 @@ export class AccountRepository implements IAccountRepository {
   private static instance: AccountRepository;
   private accounts: Account[];
   private ignores: Map<string, Set<string>>; // key: account.id, value: set of ihash
+  private socketIdsByAccountId: Map<string, Set<string>>;
+  private accountIdBySocketId: Map<string, string>;
+  private roomBySocketId: Map<string, string>;
 
   private constructor() {
     this.accounts = [];
     this.ignores = new Map();
+    this.socketIdsByAccountId = new Map();
+    this.accountIdBySocketId = new Map();
+    this.roomBySocketId = new Map();
   }
 
   static getInstance(): AccountRepository {
@@ -33,7 +39,14 @@ export class AccountRepository implements IAccountRepository {
 
   // ソケットIDからAccountを取得する
   getAccountBySocketId(socketId: string): Account | undefined {
+    const accountId = this.accountIdBySocketId.get(socketId);
+    if (accountId) {
+      return this.getAccountByID(accountId);
+    }
     const account = this.accounts.find((u) => u.socketId === socketId);
+    if (account) {
+      this.registerSocketId(account.id, socketId);
+    }
     return account;
   }
 
@@ -124,6 +137,7 @@ export class AccountRepository implements IAccountRepository {
     const generator = idGenerator ?? IDGenerator.instance;
     const account = Account.instantiate({ idGenerator: generator, socketId });
     this.accounts.push(account);
+    this.registerSocketId(account.id, socketId);
     return account;
   }
 
@@ -132,6 +146,7 @@ export class AccountRepository implements IAccountRepository {
     const account = this.accounts.find((u) => u.token === token);
     if (account) {
       account.socketId = socketId;
+      this.registerSocketId(account.id, socketId);
     }
   }
 
@@ -175,6 +190,9 @@ export class AccountRepository implements IAccountRepository {
   deleteAll(): void {
     this.accounts = [];
     this.ignores.clear();
+    this.socketIdsByAccountId.clear();
+    this.accountIdBySocketId.clear();
+    this.roomBySocketId.clear();
   }
 
   getAccountByID(id: string): Account | undefined {
@@ -211,5 +229,62 @@ export class AccountRepository implements IAccountRepository {
   isIgnored(sourceAccountId: string, targetIhash: string | undefined | null) {
     if (!targetIhash) return false;
     return this.ignores.get(sourceAccountId)?.has(targetIhash) ?? false;
+  }
+
+  registerSocketId(accountId: string, socketId: string): void {
+    const existingAccountId = this.accountIdBySocketId.get(socketId);
+    if (existingAccountId && existingAccountId !== accountId) {
+      const existingSet = this.socketIdsByAccountId.get(existingAccountId);
+      existingSet?.delete(socketId);
+      if (existingSet?.size === 0) {
+        this.socketIdsByAccountId.delete(existingAccountId);
+      }
+    }
+
+    this.accountIdBySocketId.set(socketId, accountId);
+    const set = this.socketIdsByAccountId.get(accountId) ?? new Set<string>();
+    set.add(socketId);
+    this.socketIdsByAccountId.set(accountId, set);
+
+    const account = this.getAccountByID(accountId);
+    if (account) {
+      account.socketId = socketId;
+    }
+  }
+
+  removeSocketId(socketId: string): void {
+    const accountId = this.accountIdBySocketId.get(socketId);
+    if (accountId) {
+      const set = this.socketIdsByAccountId.get(accountId);
+      set?.delete(socketId);
+      const account = this.getAccountByID(accountId);
+      if (account && account.socketId === socketId) {
+        const nextSocketId = set?.values().next().value;
+        if (nextSocketId) {
+          account.socketId = nextSocketId;
+        }
+      }
+      if (set && set.size === 0) {
+        this.socketIdsByAccountId.delete(accountId);
+      }
+    }
+    this.accountIdBySocketId.delete(socketId);
+    this.roomBySocketId.delete(socketId);
+  }
+
+  getSocketIdsByAccountId(accountId: string): Set<string> {
+    return new Set(this.socketIdsByAccountId.get(accountId) ?? []);
+  }
+
+  setSocketRoom(socketId: string, room: string | null | undefined): void {
+    if (room) {
+      this.roomBySocketId.set(socketId, room);
+    } else {
+      this.roomBySocketId.delete(socketId);
+    }
+  }
+
+  getSocketRoom(socketId: string): string | undefined {
+    return this.roomBySocketId.get(socketId);
   }
 }

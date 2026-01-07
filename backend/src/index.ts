@@ -198,6 +198,21 @@ function canViewerSeePublisher(
   return true;
 }
 
+function shouldConcealViewerInRoom(viewer: Account, room: string): boolean {
+  const viewerIhash = viewer.character.avatar.whiteTrip?.value ?? null;
+  if (!viewerIhash) return true;
+
+  const users = accountRepo.fetchUsers(room);
+
+  for (const user of users) {
+    if (user.id === viewer.id) continue;
+    if (accountRepo.isIgnored(viewer.id, user.ihash)) return true;
+    if (accountRepo.isIgnored(user.id, viewerIhash)) return true;
+  }
+
+  return false;
+}
+
 const ioServer: Server = new Server(server, {
   path: "/monachatchat/",
   cors: {
@@ -296,6 +311,14 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
   const repo = AccountRepository.getInstance();
   const account = (req as any).account as Account;
 
+  if (account.id !== state.publisherId && shouldConcealViewerInRoom(account, room)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  if (state.publisherId && !canViewerSeePublisher(account, state.publisherId)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
   if (state.phase !== "live" || !state.publisherId) {
     return res.json({
       isLive: false,
@@ -303,10 +326,6 @@ app.get("/api/live/:room/status", liveAuth, (req, res) => {
       publisherName: null,
       audioOnly: false,
     });
-  }
-
-  if (!canViewerSeePublisher(account, state.publisherId)) {
-    return res.status(404).json({ error: "not_found" });
   }
 
   const user = repo.fetchUser(state.publisherId, room);
@@ -374,13 +393,17 @@ app.get("/api/live/:room/webrtc-config", liveAuth, (req, res) => {
 
   const state = liveStateRepo.get(room); // { publisherId, audioOnly, ... } 想定
 
+  if (account.id !== state.publisherId && shouldConcealViewerInRoom(account, room)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  if (state.publisherId && !canViewerSeePublisher(account, state.publisherId)) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
   // ロックなし：配信開始手続きが踏まれていない
   if (!state.publisherId || !state.streamKey) {
     return res.status(409).json({ error: "no-live-lock" });
-  }
-
-  if (!canViewerSeePublisher(account, state.publisherId)) {
-    return res.status(404).json({ error: "not_found" });
   }
 
   const whipBase = getWhipBase();
@@ -464,7 +487,7 @@ app.post("/api/live/:room/stop", liveAuth, (req, res) => {
       roomId: room,
       publisherId,
       payloadForAllowed: {
-        room: room,
+        type: "invalidate",
       },
     });
   }
@@ -515,7 +538,7 @@ app.get("/internal/live/whip-auth", (req, res) => {
       roomId: result.roomId,
       publisherId,
       payloadForAllowed: {
-        room: result.roomId,
+        type: "invalidate",
       },
     });
   }
@@ -609,7 +632,7 @@ setInterval(() => {
       roomId,
       publisherId,
       payloadForAllowed: {
-        room: roomId,
+        type: "invalidate",
       },
     });
   }
