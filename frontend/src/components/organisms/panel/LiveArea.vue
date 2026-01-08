@@ -779,27 +779,26 @@ const onVisibilityChange = () => {
 };
 
 const onClickVisiabilityRoom = async (room: string) => {
-  console.debug("navigate click:", { room, current: userStore.currentRoom?.id });
+  const current = userStore.currentRoom?.id ?? "";
+  if (!room || room === current) return;
 
-  // 1) いま組んでいるパスの解決結果
-  const targetPath = `/room/${encodeURIComponent(room)}`; // "/room/%2F21"
-  const r1 = router.resolve(targetPath);
-  console.debug("resolve path:", {
-    targetPath,
-    href: r1.href,
-    matched: r1.matched.map((m) => ({ name: m.name, path: m.path })),
-  });
+  try {
+    const failure = await router.push({ name: "room", params: { id: room } });
 
-  // 2) name=room で解決できるか（ルート定義があるか）
-  const r2 = router.resolve({ name: "room", params: { roomId: room } });
-  console.debug("resolve name:", {
-    href: r2.href,
-    matched: r2.matched.map((m) => ({ name: m.name, path: m.path })),
-  });
-
-  // 3) 実際に push（結果もログ）
-  const failure = await router.push({ name: "room", params: { roomId: room } });
-  console.debug("push result:", { failure, now: router.currentRoute.value.fullPath });
+    // duplicated/cancel/abort は無害なので握る（ログは必要なら出す）
+    if (failure && isNavigationFailure(failure)) {
+      if (
+        isNavigationFailure(failure, NavigationFailureType.duplicated) ||
+        isNavigationFailure(failure, NavigationFailureType.cancelled) ||
+        isNavigationFailure(failure, NavigationFailureType.aborted)
+      ) {
+        return;
+      }
+      console.debug("navigation failure:", failure);
+    }
+  } catch (e) {
+    logErrorSafe("router.push threw", e);
+  }
 };
 
 watch(
