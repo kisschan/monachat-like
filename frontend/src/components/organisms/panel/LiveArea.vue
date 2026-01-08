@@ -106,18 +106,19 @@
           <p v-else-if="liveCount === 0 && !hasLoadedOnce" class="hint">準備中…</p>
           <p v-else-if="liveCount === 0" class="hint">配信中の部屋はありません。</p>
           <ul v-else class="live-rooms">
-            <li
-              v-for="r in visibleLiveRooms"
-              :key="r.room"
-              class="live-rooms__item"
-              @click="onClickVisiabilityRoom(r.room)"
-            >
-              <div class="live-rooms__room">{{ r.room }}</div>
+            <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
+              <RouterLink
+                class="live-rooms__link"
+                :disabled="userStore.currentRoom?.id === r.room"
+                :to="`/room/${r.room}`"
+              >
+                <div class="live-rooms__room">{{ r.room }}</div>
 
-              <div class="live-rooms__meta">
-                <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
-                <span v-if="r.audioOnly">（音声のみ）</span>
-              </div>
+                <div class="live-rooms__meta">
+                  <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
+                  <span v-if="r.audioOnly">（音声のみ）</span>
+                </div>
+              </RouterLink>
             </li>
           </ul>
         </AccordionContent>
@@ -157,7 +158,7 @@ import Accordion from "primevue/accordion";
 import AccordionPanel from "primevue/accordionpanel";
 import AccordionContent from "primevue/accordioncontent";
 import AccordionHeader from "primevue/accordionheader";
-import { useRouter } from "vue-router";
+import { RouterLink } from "vue-router";
 const isProd = import.meta.env.PROD;
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
@@ -186,7 +187,6 @@ const logErrorSafe = (label: string, e: unknown) => {
 
 const userStore = useUserStore();
 const roomStore = useRoomStore();
-const router = useRouter();
 
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
@@ -775,11 +775,6 @@ const onVisibilityChange = () => {
   if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
     void liveRoomsStore.load("visibility-change").catch(() => {});
   }
-};
-
-const onClickVisiabilityRoom = async (roomId: string) => {
-  if (userStore.currentRoom?.id === roomId) return;
-  await router.push({ name: "room", params: { roomId } });
 };
 
 watch(
