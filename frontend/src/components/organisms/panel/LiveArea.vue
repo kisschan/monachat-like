@@ -778,24 +778,20 @@ const onVisibilityChange = () => {
   }
 };
 
+const normalizeRoomParam = (room: string): string => {
+  // "/21" -> "21", "///21" -> "21"
+  return String(room ?? "").replace(/^\/+/, "");
+};
+
 const onClickVisiabilityRoom = async (room: string) => {
   const current = userStore.currentRoom?.id ?? "";
   if (!room || room === current) return;
 
-  try {
-    const failure = await router.push({ name: "room", params: { id: room } });
+  const id = normalizeRoomParam(room); // ← ここが肝
+  if (!id) return;
 
-    // duplicated/cancel/abort は無害なので握る（ログは必要なら出す）
-    if (failure && isNavigationFailure(failure)) {
-      if (
-        isNavigationFailure(failure, NavigationFailureType.duplicated) ||
-        isNavigationFailure(failure, NavigationFailureType.cancelled) ||
-        isNavigationFailure(failure, NavigationFailureType.aborted)
-      ) {
-        return;
-      }
-      console.debug("navigation failure:", failure);
-    }
+  try {
+    await router.push({ name: "room", params: { id } }); // /room/21 になる
   } catch (e) {
     logErrorSafe("router.push threw", e);
   }
