@@ -110,7 +110,7 @@
               <RouterLink
                 class="live-rooms__link"
                 :disabled="userStore.currentRoom?.id === r.room"
-                :to="`/room/${r.room}`"
+                :to="`/room${r.room}`"
               >
                 <div class="live-rooms__room">{{ r.room }}</div>
 
