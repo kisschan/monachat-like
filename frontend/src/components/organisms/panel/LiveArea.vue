@@ -158,7 +158,7 @@ import Accordion from "primevue/accordion";
 import AccordionPanel from "primevue/accordionpanel";
 import AccordionContent from "primevue/accordioncontent";
 import AccordionHeader from "primevue/accordionheader";
-import { useRouter } from "vue-router";
+import { isNavigationFailure, NavigationFailureType, useRouter } from "vue-router";
 const isProd = import.meta.env.PROD;
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
@@ -778,11 +778,30 @@ const onVisibilityChange = () => {
   }
 };
 
-const onClickVisiabilityRoom = async (roomId: string) => {
-  router.push({
-    // NOTE: idに"/"が含まれる
-    path: `/room${roomId}`,
-  });
+const onClickVisiabilityRoom = async (room: string) => {
+  const current = userStore.currentRoom?.id ?? "";
+  if (!room || room === current) return;
+
+  // まず「クリックが届いているか」を確実に観測
+  console.debug("navigate click:", { room, current });
+
+  try {
+    const failure = await router.push({ name: "room", params: { roomId: room } });
+
+    // vue-router v4 は「よくある失敗」は reject ではなく failure を返すことがある
+    if (failure && isNavigationFailure(failure)) {
+      if (
+        isNavigationFailure(failure, NavigationFailureType.duplicated) ||
+        isNavigationFailure(failure, NavigationFailureType.cancelled) ||
+        isNavigationFailure(failure, NavigationFailureType.aborted)
+      ) {
+        return; // 無害
+      }
+      console.debug("navigation failure:", failure);
+    }
+  } catch (e) {
+    logErrorSafe("router.push threw", e);
+  }
 };
 
 watch(
