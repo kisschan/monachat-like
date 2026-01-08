@@ -106,7 +106,12 @@
           <p v-else-if="liveCount === 0 && !hasLoadedOnce" class="hint">準備中…</p>
           <p v-else-if="liveCount === 0" class="hint">配信中の部屋はありません。</p>
           <ul v-else class="live-rooms">
-            <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
+            <li
+              v-for="r in visibleLiveRooms"
+              :key="r.room"
+              class="live-rooms__item"
+              @click="onClickVisiabilityRoom(r.room)"
+            >
               <div class="live-rooms__room">{{ r.room }}</div>
 
               <div class="live-rooms__meta">
@@ -152,6 +157,7 @@ import Accordion from "primevue/accordion";
 import AccordionPanel from "primevue/accordionpanel";
 import AccordionContent from "primevue/accordioncontent";
 import AccordionHeader from "primevue/accordionheader";
+import { useRouter } from "vue-router";
 const isProd = import.meta.env.PROD;
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
@@ -180,6 +186,7 @@ const logErrorSafe = (label: string, e: unknown) => {
 
 const userStore = useUserStore();
 const roomStore = useRoomStore();
+const router = useRouter();
 
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
@@ -768,6 +775,11 @@ const onVisibilityChange = () => {
   if (document.visibilityState === "visible" && isReadyToLoadLiveRooms.value) {
     void liveRoomsStore.load("visibility-change").catch(() => {});
   }
+};
+
+const onClickVisiabilityRoom = async (roomId: string) => {
+  if (userStore.currentRoom?.id === roomId) return;
+  await router.push({ name: "room", params: { roomId } });
 };
 
 watch(
