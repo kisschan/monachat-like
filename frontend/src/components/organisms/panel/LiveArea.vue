@@ -786,7 +786,7 @@ const onClickVisiabilityRoom = async (room: string) => {
   console.debug("navigate click:", { room, current });
 
   try {
-    const failure = await router.push({ path: room });
+    const failure = await router.push({ path: `/room${room}` });
 
     // vue-router v4 は「よくある失敗」は reject ではなく failure を返すことがある
     if (failure && isNavigationFailure(failure)) {
