@@ -107,12 +107,20 @@
           <p v-else-if="liveCount === 0" class="hint">配信中の部屋はありません。</p>
           <ul v-else class="live-rooms">
             <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
-              <div class="live-rooms__room">{{ r.room }}</div>
+              <button
+                type="button"
+                class="live-rooms__card"
+                :disabled="userStore.currentRoom?.id === r.room"
+                :aria-current="userStore.currentRoom?.id === r.room ? 'page' : undefined"
+                @click="onClickVisiabilityRoom(r.room)"
+              >
+                <div class="live-rooms__room">{{ r.room }}</div>
 
-              <div class="live-rooms__meta">
-                <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
-                <span v-if="r.audioOnly">（音声のみ）</span>
-              </div>
+                <div class="live-rooms__meta">
+                  <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
+                  <span v-if="r.audioOnly">（音声のみ）</span>
+                </div>
+              </button>
             </li>
           </ul>
         </AccordionContent>
@@ -152,6 +160,7 @@ import Accordion from "primevue/accordion";
 import AccordionPanel from "primevue/accordionpanel";
 import AccordionContent from "primevue/accordioncontent";
 import AccordionHeader from "primevue/accordionheader";
+import { useRouter } from "vue-router";
 const isProd = import.meta.env.PROD;
 
 type SafeErr = { name?: string; message?: string; status?: number; code?: string };
@@ -180,6 +189,7 @@ const logErrorSafe = (label: string, e: unknown) => {
 
 const userStore = useUserStore();
 const roomStore = useRoomStore();
+const router = useRouter();
 
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
@@ -770,6 +780,25 @@ const onVisibilityChange = () => {
   }
 };
 
+const normalizeRoomParam = (room: string): string => {
+  // "/21" -> "21", "///21" -> "21"
+  return String(room ?? "").replace(/^\/+/, "");
+};
+
+const onClickVisiabilityRoom = async (room: string) => {
+  const current = userStore.currentRoom?.id ?? "";
+  if (!room || room === current) return;
+
+  const id = normalizeRoomParam(room); // ← ここが肝
+  if (!id) return;
+
+  try {
+    await router.push({ name: "room", params: { id } }); // /room/21 になる
+  } catch (e) {
+    logErrorSafe("router.push threw", e);
+  }
+};
+
 watch(
   () => userStore.currentRoom?.id,
   async (newRoomId, oldRoomId) => {
@@ -960,13 +989,6 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.live-rooms__item {
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px;
-  padding: 10px;
-  background: #fff;
-}
-
 .live-rooms__room {
   font-weight: 700;
   margin-bottom: 4px;
@@ -978,5 +1000,50 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.live-rooms__item {
+  /* li側はレイアウトだけ。カード見た目は button 側に寄せる */
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* 重要：ボタンの標準見た目を完全に殺す */
+.live-rooms__card {
+  appearance: none;
+  -webkit-appearance: none;
+
+  /* クリック領域をカード全体に */
+  width: 100%;
+  display: block;
+  text-align: left;
+
+  /* 標準ボタンの余白/枠/背景を消す */
+  border: 0;
+  padding: 10px; /* ← ここは元の .live-rooms__item の padding と合わせる */
+  background: #fff;
+  color: inherit;
+  font: inherit;
+
+  /* ここから “カードの見た目” */
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+}
+
+/* disabled を本当に効かせる（見た目も） */
+.live-rooms__card:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.live-rooms__card:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+/* キーボード操作時のフォーカス可視化（見た目を壊さない範囲で） */
+.live-rooms__card:focus-visible {
+  outline: 2px solid rgba(0, 0, 0, 0.35);
+  outline-offset: 3px;
 }
 </style>
