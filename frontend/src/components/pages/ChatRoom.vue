@@ -117,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { Stat } from "@/domain/stat";
 import SpanText from "@/components/atoms/SpanText.vue";
@@ -201,26 +201,63 @@ const isMine = (id: string) => {
   return id === myID.value;
 };
 
-// ライフサイクル
-onMounted(async () => {
-  usersStore.resetUsers(); // 以前いた部屋のユーザー情報を削除する。
-  await roomStore.syncRoomMetadata(); // NOTE: これがないと、直接入った部屋が有効な部屋なのか判断ができない
+// "/21" でも "21" でも内部は "/21" に揃える
+const toInternalRoomId = (raw: unknown): string => {
+  const s = String(raw ?? "");
+  if (!s) return "";
+  const trimmed = s.replace(/^\/+/, ""); // 先頭の / を除去
+  return `/${trimmed}`;
+};
 
-  const roomObj = roomStore.roomObj(`/${route.params.id}`);
-  if (roomObj === undefined) {
-    router.push({
-      path: "/select",
-    });
+// レース防止（高速遷移で古い処理が勝たないように）
+let enterEpoch = 0;
+
+// グローバルリスナーは「1回だけ」付けて、unmountで外す
+const unloadAppendExitLog = () => {
+  userStore.exit();
+  // NOTE: unload で reload は基本不要かつ不安定なので、まず外すのを推奨
+  // window.location.reload();
+  window.onbeforeunload = null;
+};
+
+const enterRoomByRoute = async (): Promise<void> => {
+  const myEpoch = ++enterEpoch;
+
+  usersStore.resetUsers();
+  await roomStore.syncRoomMetadata();
+
+  // 途中で別遷移が起きたら中断（古い処理を捨てる）
+  if (myEpoch !== enterEpoch) return;
+
+  const internalRoomId = toInternalRoomId(route.params.id);
+
+  // ルートが壊れてる/直接入力など
+  if (!internalRoomId || internalRoomId === "/") {
+    await router.push({ path: "/select" });
     return;
   }
+
+  const roomObj = roomStore.roomObj(internalRoomId);
+  if (roomObj === undefined) {
+    await router.push({ path: "/select" });
+    return;
+  }
+
   currentRoom.value = { ...roomObj };
   userStore.enter(currentRoom.value);
+};
 
-  const unloadAppendExitLog = () => {
-    userStore.exit();
-    window.location.reload();
-    window.onbeforeunload = null;
-  };
+// ルートパラメータ変更で「入室処理」を必ず実行
+watch(
+  () => String(route.params.id ?? ""),
+  async () => {
+    await enterRoomByRoute();
+  },
+  { immediate: true },
+);
+
+// ライフサイクル
+onMounted(async () => {
   window.addEventListener("unload", unloadAppendExitLog);
   window.addEventListener("keydown", onKeyDown);
 });
