@@ -11,6 +11,7 @@
     <div class="top-log-buttons">
       <SimpleButton title="ログモード" class="log-button" :text-size="16" @click="clickLogMode" />
       <SimpleButton
+        v-show="currentRoom?.liveEnabled === true"
         title="LIVE"
         class="live-button log-button"
         :class="{ 'is-active': isLiveVisible }"

@@ -7,7 +7,7 @@ type RoomMeta = {
   id: string;
   name: string;
   img_url: string;
-  liveEnabled?: boolean; // 配信許可フラグ
+  liveEnabled: boolean; // 配信許可フラグ
 };
 
 export const useRoomStore = defineStore("room", () => {
