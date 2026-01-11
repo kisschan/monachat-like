@@ -11,6 +11,13 @@
     <div class="top-log-buttons">
       <SimpleButton title="ログモード" class="log-button" :text-size="16" @click="clickLogMode" />
       <SimpleButton
+        title="LIVE"
+        class="live-button log-button"
+        :class="{ 'is-active': isLiveVisible }"
+        :text-size="16"
+        @click="toggleLiveWindow"
+      />
+      <SimpleButton
         v-if="isLogVisible"
         title="ログ行数"
         class="log-button"
@@ -26,6 +33,7 @@
         <div class="log-row"><SpanText :text="`${log.head}${log.content}${log.foot}`" /></div>
       </div>
     </div>
+    <LiveWindowOverlay v-show="isLiveVisible" @close="closeLiveWindow" />
     <img
       v-if="currentRoom != undefined"
       class="room-img"
@@ -125,6 +133,7 @@ import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import InvertButton from "@/components/molecules/InvertButton.vue";
 import SubmittableField from "@/components/molecules/SubmittableField.vue";
 import ChatCharacter from "@/components/organisms/ChatCharacter.vue";
+import LiveWindowOverlay from "@/components/organisms/LiveWindowOverlay.vue";
 import { useUIStore } from "@/stores/ui";
 import { useUserStore } from "@/stores/user";
 import { storeToRefs } from "pinia";
@@ -161,6 +170,7 @@ const permittedSubmitting = ref(true); // チャットの送信が許可され�
 const keyCount = ref(0); // キータイプ数
 const typingStartTime = ref(0); // タイピング開始時刻
 const activePointerId = ref<number | null>(null);
+const isLiveVisible = ref(false);
 
 // ストア
 const { disconnected, myID } = storeToRefs(userStore);
@@ -324,6 +334,12 @@ const clickLogLines = () => {
       break;
   }
 };
+const toggleLiveWindow = () => {
+  isLiveVisible.value = !isLiveVisible.value;
+};
+const closeLiveWindow = () => {
+  isLiveVisible.value = false;
+};
 const click = ({ ihash }: { ihash: string }) => {
   if (settingStore.isClickToChangeColorEnabled) {
     settingStore.clickToChangeColor(ihash);
@@ -456,6 +472,13 @@ const bubbleDeleted = ({ characterID, messageID }: { characterID: string; messag
       pointer-events: auto;
       width: 100px;
       height: 30px;
+    }
+
+    .live-button.is-active.light,
+    .live-button.is-active.dark {
+      background-color: #d64545;
+      border-color: #d64545;
+      color: #fff;
     }
   }
 
