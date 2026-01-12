@@ -111,7 +111,7 @@ const onResizePointerMove = (event: PointerEvent) => {
   event.preventDefault();
   event.stopPropagation();
   const next = clampSize({
-    width: resizeStart.value.width + (event.clientX - resizeStart.value.x),
+    width: resizeStart.value.width + (resizeStart.value.x - event.clientX),
     height: resizeStart.value.height + (event.clientY - resizeStart.value.y),
   });
   size.value = next;
@@ -134,6 +134,7 @@ const endResize = (event: PointerEvent) => {
   document.removeEventListener("pointermove", onResizePointerMove, CAPTURE_OPTS);
   document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
   document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
+  unlockOverscroll();
   saveStoredSize(size.value);
 };
 
@@ -143,6 +144,7 @@ const startResize = (event: PointerEvent) => {
   if (activePointerId.value !== null) {
     return;
   }
+  lockOverscroll();
   activePointerId.value = event.pointerId;
   resizeStart.value = {
     x: event.clientX,
@@ -172,6 +174,41 @@ const close = () => {
   emit("close");
 };
 
+const prevBodyTouchAction = ref<string | null>(null);
+const prevBodyOverscrollY = ref<string | null>(null);
+
+const preventTouchMove = (e: TouchEvent) => {
+  // リサイズ中だけブラウザ更新/スクロールを抑止
+  e.preventDefault();
+};
+
+const lockOverscroll = () => {
+  if (typeof document === "undefined") return;
+  const body = document.body;
+
+  prevBodyTouchAction.value = body.style.touchAction;
+  // overscrollBehaviorY はブラウザにより効きが違うが、効くところでは効く
+  prevBodyOverscrollY.value = (body.style as CSSStyleDeclaration).overscrollBehaviorY;
+
+  body.style.touchAction = "none";
+  (body.style as CSSStyleDeclaration).overscrollBehaviorY = "contain";
+
+  // iOS/一部環境向けに touchmove を明示抑止（リサイズ中のみ）
+  document.addEventListener("touchmove", preventTouchMove, { passive: false, capture: true });
+};
+
+const unlockOverscroll = () => {
+  if (typeof document === "undefined") return;
+  const body = document.body;
+
+  body.style.touchAction = prevBodyTouchAction.value ?? "";
+  (body.style as CSSStyleDeclaration).overscrollBehaviorY = prevBodyOverscrollY.value ?? "";
+
+  document.removeEventListener("touchmove", preventTouchMove, {
+    capture: true,
+  } as EventListenerOptions);
+};
+
 onMounted(async () => {
   updateMaxSize();
   await nextTick();
@@ -196,6 +233,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointermove", onResizePointerMove, CAPTURE_OPTS);
   document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
   document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
+  unlockOverscroll();
 });
 </script>
 
@@ -261,14 +299,27 @@ onBeforeUnmount(() => {
 
 .live-window__resize-handle {
   position: absolute;
-  right: 6px;
+  left: 6px;
   bottom: 6px;
-  width: 16px;
-  height: 16px;
-  cursor: nwse-resize;
+
+  width: 28px;
+  height: 28px;
+  cursor: nesw-resize;
   border-bottom: 2px solid rgba(0, 0, 0, 0.35);
-  border-right: 2px solid rgba(0, 0, 0, 0.35);
+  border-left: 2px solid rgba(0, 0, 0, 0.35);
   border-radius: 2px;
   touch-action: none;
+}
+
+/* タッチ端末はさらに押しやすく */
+@media (pointer: coarse) {
+  .live-window__resize-handle {
+    width: 44px;
+    height: 44px;
+    left: 8px;
+    bottom: 8px;
+    border-bottom-width: 3px;
+    border-left-width: 3px;
+  }
 }
 </style>
