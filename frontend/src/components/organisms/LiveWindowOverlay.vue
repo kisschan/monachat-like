@@ -17,6 +17,36 @@
         <span class="live-window__badge">LIVE</span>
         <span class="live-window__text">ライブ映像</span>
       </div>
+
+      <div class="live-window__size-controls" role="group" aria-label="ライブ窓サイズ">
+        <SimpleButton
+          class="live-window__size-btn"
+          title="小"
+          :text-size="12"
+          @click="applyPreset('s')"
+        />
+
+        <SimpleButton
+          class="live-window__size-btn"
+          title="中"
+          :text-size="12"
+          @click="applyPreset('m')"
+        />
+
+        <SimpleButton
+          class="live-window__size-btn"
+          title="大"
+          :text-size="12"
+          @click="applyPreset('l')"
+        />
+
+        <SimpleButton
+          class="live-window__size-btn"
+          title="全"
+          :text-size="12"
+          @click="applyPreset('full')"
+        />
+      </div>
       <SimpleButton title="閉じる" class="live-window__close" :text-size="14" @click="close" />
     </header>
     <div class="live-window__body">
@@ -209,6 +239,45 @@ const unlockOverscroll = () => {
   } as EventListenerOptions);
 };
 
+//モバイル用ボタン
+
+type Preset = "s" | "m" | "l" | "full";
+
+const applyPreset = (preset: Preset) => {
+  // maxSize は updateMaxSize() で更新されている前提
+  // 画面比率を崩し過ぎないため、16:9を基準にする（audio-onlyでも問題なし）
+  const maxW = maxSize.value.width;
+  const maxH = maxSize.value.height;
+
+  const pick = (() => {
+    switch (preset) {
+      case "s": {
+        // 片手で押しやすく、邪魔になりにくいサイズ
+        const w = Math.min(maxW, 360);
+        const h = Math.round((w * 9) / 16);
+        return { width: w, height: h };
+      }
+      case "m": {
+        const w = Math.min(maxW, 440);
+        const h = Math.round((w * 9) / 16);
+        return { width: w, height: h };
+      }
+      case "l": {
+        // 大：画面の多くを使う（ただし全画面ではない）
+        const w = Math.min(maxW, Math.round(maxW * 0.92));
+        const h = Math.min(maxH, Math.round((w * 9) / 16));
+        return { width: w, height: h };
+      }
+      case "full":
+      default:
+        return { width: maxW, height: maxH };
+    }
+  })();
+
+  size.value = clampSize(pick);
+  saveStoredSize(size.value);
+};
+
 onMounted(async () => {
   updateMaxSize();
   await nextTick();
@@ -311,8 +380,23 @@ onBeforeUnmount(() => {
   touch-action: none;
 }
 
+/* サイズ切替ボタン（デフォルトは非表示） */
+.live-window__size-controls {
+  display: none;
+  gap: 6px;
+  align-items: center;
+}
+.live-window__size-btn {
+  width: 32px;
+  height: 28px;
+}
+
 /* タッチ端末はさらに押しやすく */
 @media (pointer: coarse) {
+  .live-window__size-controls {
+    display: flex;
+  }
+
   .live-window__resize-handle {
     width: 44px;
     height: 44px;
