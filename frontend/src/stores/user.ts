@@ -7,6 +7,7 @@ import { RoomResponse } from "../infrastructure/api";
 import { useUIStore } from "./ui";
 import Color from "./color";
 import { useUsersStore } from "./users";
+import { RoomMeta } from "@/domain/type";
 
 export interface IUser {
   myID: string | null;
@@ -35,7 +36,7 @@ export const useUserStore = defineStore("user", () => {
     id: string;
     name: string;
     img_url: string;
-    liveEnabled: boolean;
+    liveEnabled?: boolean;
   } | null>(null); // 現在いる部屋(部屋にいない場合はnull)
   const coordinate = ref<{ x: number; y: number } | null>(null);
   const disconnected = ref(false); // サーバーから切断されているかどうか
@@ -50,9 +51,7 @@ export const useUserStore = defineStore("user", () => {
   const updateCurrentPathName = (value: string | undefined) => {
     currentPathName.value = value;
   };
-  const updateCurrentRoom = (
-    room: { id: string; name: string; img_url: string; liveEnabled: boolean } | null,
-  ) => {
+  const updateCurrentRoom = (room: RoomMeta | null) => {
     if (room === null) {
       currentRoom.value = null;
       return;

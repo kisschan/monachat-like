@@ -33,3 +33,10 @@ export type ChatMessage = {
 };
 
 export type ChatMessages = (ChatMessage & { messageID: string })[];
+
+export type RoomMeta = {
+  id: string;
+  name: string;
+  img_url: string;
+  liveEnabled?: boolean;
+};

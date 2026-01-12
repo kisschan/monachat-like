@@ -24,6 +24,6 @@ export type RoomResponse = {
     id: string;
     name: string;
     img_url: string;
-    liveEnabled: boolean;
+    liveEnabled?: boolean;
   }[];
 };
