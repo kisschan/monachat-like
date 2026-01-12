@@ -38,12 +38,16 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+  min-height: 0;
 }
 
 .live-video-pane__video {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  height: auto;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  object-fit: contain;
   border-radius: 12px;
   background: #111;
   display: block;
