@@ -7,6 +7,7 @@ import { RoomResponse } from "../infrastructure/api";
 import { useUIStore } from "./ui";
 import Color from "./color";
 import { useUsersStore } from "./users";
+import { RoomMeta } from "@/domain/type";
 
 export interface IUser {
   myID: string | null;
@@ -31,7 +32,12 @@ export const useUserStore = defineStore("user", () => {
   const myID = ref<string | null>(null); // サーバから付与されたID
   const ihash = ref<string | null>(null); // サーバーから付与されたihash
   const currentPathName = ref<string | undefined>(undefined); // 現在のパス（Vue routerの値を同期するためのもの）
-  const currentRoom = ref<{ id: string; name: string; img_url: string } | null>(null); // 現在いる部屋(部屋にいない場合はnull)
+  const currentRoom = ref<{
+    id: string;
+    name: string;
+    img_url: string;
+    liveEnabled?: boolean;
+  } | null>(null); // 現在いる部屋(部屋にいない場合はnull)
   const coordinate = ref<{ x: number; y: number } | null>(null);
   const disconnected = ref(false); // サーバーから切断されているかどうか
 
@@ -45,7 +51,7 @@ export const useUserStore = defineStore("user", () => {
   const updateCurrentPathName = (value: string | undefined) => {
     currentPathName.value = value;
   };
-  const updateCurrentRoom = (room: { id: string; name: string; img_url: string } | null) => {
+  const updateCurrentRoom = (room: RoomMeta | null) => {
     if (room === null) {
       currentRoom.value = null;
       return;

@@ -2,13 +2,7 @@ import axios from "axios";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { COUNTResParam } from "../socketIOInstance";
-// 部屋のメタデータ
-type RoomMeta = {
-  id: string;
-  name: string;
-  img_url: string;
-  liveEnabled?: boolean; // 配信許可フラグ
-};
+import { RoomMeta } from "../domain/type";
 
 export const useRoomStore = defineStore("room", () => {
   const roomMetadata = ref<RoomMeta[]>([]);

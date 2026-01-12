@@ -8,89 +8,80 @@
       </template>
     </header>
 
-    <section v-if="liveEnabled" class="live-grid">
-      <!-- 左：コントロールカード（配信者＋視聴UI） -->
-      <section class="live-card live-card--controls">
-        <h3>配信者コントロール</h3>
+    <section v-if="liveEnabled" class="live-card live-card--controls">
+      <h3>配信者コントロール</h3>
 
-        <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-        <!-- 配信モード（開始前に選択） -->
-        <div class="mode-switch">
-          <label>
-            <input
-              v-model="publishMode"
-              type="radio"
-              value="camera"
-              :disabled="isBusyPublish || isLive"
-            />
-            カメラ＋マイク
-          </label>
+      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+      <!-- 配信モード（開始前に選択） -->
+      <div class="mode-switch">
+        <label>
+          <input
+            v-model="publishMode"
+            type="radio"
+            value="camera"
+            :disabled="isBusyPublish || isLive"
+          />
+          カメラ＋マイク
+        </label>
 
-          <label>
-            <input
-              v-model="publishMode"
-              type="radio"
-              value="screen"
-              :disabled="isBusyPublish || isLive"
-            />
-            画面＋画面音声
-          </label>
+        <label>
+          <input
+            v-model="publishMode"
+            type="radio"
+            value="screen"
+            :disabled="isBusyPublish || isLive"
+          />
+          画面＋画面音声
+        </label>
 
-          <label>
-            <input
-              v-model="publishMode"
-              type="radio"
-              value="audio"
-              :disabled="isBusyPublish || isLive"
-            />
-            マイクのみ
-          </label>
-        </div>
+        <label>
+          <input
+            v-model="publishMode"
+            type="radio"
+            value="audio"
+            :disabled="isBusyPublish || isLive"
+          />
+          マイクのみ
+        </label>
+      </div>
 
-        <!-- screenの注意（常時表示でも、screen選択時のみでもOK） -->
-        <p v-if="publishMode === 'screen'" class="hint">
-          画面音声は「共有対象」と「共有ダイアログの音声共有設定」に依存します。
-          音声が取得できない場合は配信開始できません。
-        </p>
+      <!-- screenの注意（常時表示でも、screen選択時のみでもOK） -->
+      <p v-if="publishMode === 'screen'" class="hint">
+        画面音声は「共有対象」と「共有ダイアログの音声共有設定」に依存します。
+        音声が取得できない場合は配信開始できません。
+      </p>
 
-        <!-- screen音声が取れなかった時の専用表示 -->
-        <p v-if="screenAudioNotice" class="error">
-          {{ screenAudioNotice }}
-        </p>
+      <!-- screen音声が取れなかった時の専用表示 -->
+      <p v-if="screenAudioNotice" class="error">
+        {{ screenAudioNotice }}
+      </p>
 
-        <div class="buttons">
-          <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
-          <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
-        </div>
+      <div class="buttons">
+        <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
+        <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
+      </div>
 
-        <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
+      <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
 
-        <hr class="live-sep" />
+      <hr class="live-sep" />
 
-        <h3>視聴</h3>
+      <h3>視聴</h3>
 
-        <div class="mode-switch">
-          <label
-            ><input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
-            映像＋音声</label
-          >
-          <label><input v-model="watchMode" type="radio" value="audio" /> 音声のみ</label>
-        </div>
+      <div class="mode-switch">
+        <label
+          ><input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
+          映像＋音声</label
+        >
+        <label><input v-model="watchMode" type="radio" value="audio" /> 音声のみ</label>
+      </div>
 
-        <div class="buttons">
-          <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
-          <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
-        </div>
-      </section>
-
-      <!-- 右：プレイヤーカード（videoだけ） -->
-      <section class="live-card live-card--player">
-        <video ref="videoRef" class="live-video" autoplay playsinline controls></video>
-
-        <p v-if="isAudioOnlyLive" class="hint">
-          現在の配信は音声のみです。視聴は音声のみとなります。
-        </p>
-      </section>
+      <div class="buttons">
+        <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
+        <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
+      </div>
+      <p v-if="isAudioOnlyLive" class="hint">
+        現在の配信は音声のみです。視聴は音声のみとなります。
+      </p>
     </section>
   </section>
 
@@ -136,6 +127,7 @@ import axios from "axios";
 import { useUserStore } from "@/stores/user";
 import { useRoomStore } from "@/stores/room";
 import { useLiveRoomsStore } from "@/stores/liveRooms";
+import { useLiveVideoStore } from "@/stores/liveVideo";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
@@ -199,6 +191,7 @@ const myId = computed(() => userStore.myID);
 // 配信一覧（全体）
 // =====================
 const liveRoomsStore = useLiveRoomsStore();
+const liveVideoStore = useLiveVideoStore();
 const {
   visibleLiveRooms,
   hasLoadedOnce,
@@ -235,7 +228,7 @@ const abortInFlightPublishStart = () => {
 // 視聴者側
 const isBusyWatch = ref(false);
 const subscribeHandle = ref<WhepSubscribeHandle | null>(null);
-const videoRef = ref<HTMLVideoElement | null>(null);
+const { videoElement } = storeToRefs(liveVideoStore);
 const watchMode = ref<"av" | "audio">("av");
 const isWatchAudioOnly = computed(() => {
   // 配信が audio-only のときは強制
@@ -674,7 +667,10 @@ const onClickStopPublish = async () => {
 const onClickStartWatch = async () => {
   if (!roomId.value || !token.value) return;
   if (!canStartWatch.value) return;
-  if (!videoRef.value) return;
+  if (!videoElement.value) {
+    errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
+    return;
+  }
 
   errorMessage.value = null;
   isBusyWatch.value = true;
@@ -685,7 +681,7 @@ const onClickStartWatch = async () => {
       throw new Error("whep-url-missing");
     }
 
-    subscribeHandle.value = await startWhepSubscribe(config.whepUrl, videoRef.value, {
+    subscribeHandle.value = await startWhepSubscribe(config.whepUrl, videoElement.value, {
       audioOnly: isWatchAudioOnly.value,
     });
   } catch (e: unknown) {
@@ -904,13 +900,6 @@ onBeforeUnmount(() => {
   padding: 12px 16px 20px;
 }
 
-.live-grid {
-  display: grid;
-  grid-template-columns: minmax(300px, 2fr) minmax(420px, 3fr);
-  gap: 14px;
-  align-items: start;
-}
-
 .live-header {
   font-weight: 700;
   margin-bottom: 12px;
@@ -955,15 +944,6 @@ onBeforeUnmount(() => {
 .buttons :deep(.p-button) {
   padding: 8px 10px;
   font-size: 13px;
-}
-
-.live-video {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  height: auto;
-  border-radius: 12px;
-  background: #111;
-  display: block;
 }
 
 .error {
