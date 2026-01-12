@@ -11,74 +11,74 @@
     <section v-if="liveEnabled" class="live-card live-card--controls">
       <h3>配信者コントロール</h3>
 
-        <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-        <!-- 配信モード（開始前に選択） -->
-        <div class="mode-switch">
-          <label>
-            <input
-              v-model="publishMode"
-              type="radio"
-              value="camera"
-              :disabled="isBusyPublish || isLive"
-            />
-            カメラ＋マイク
-          </label>
+      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+      <!-- 配信モード（開始前に選択） -->
+      <div class="mode-switch">
+        <label>
+          <input
+            v-model="publishMode"
+            type="radio"
+            value="camera"
+            :disabled="isBusyPublish || isLive"
+          />
+          カメラ＋マイク
+        </label>
 
-          <label>
-            <input
-              v-model="publishMode"
-              type="radio"
-              value="screen"
-              :disabled="isBusyPublish || isLive"
-            />
-            画面＋画面音声
-          </label>
+        <label>
+          <input
+            v-model="publishMode"
+            type="radio"
+            value="screen"
+            :disabled="isBusyPublish || isLive"
+          />
+          画面＋画面音声
+        </label>
 
-          <label>
-            <input
-              v-model="publishMode"
-              type="radio"
-              value="audio"
-              :disabled="isBusyPublish || isLive"
-            />
-            マイクのみ
-          </label>
-        </div>
+        <label>
+          <input
+            v-model="publishMode"
+            type="radio"
+            value="audio"
+            :disabled="isBusyPublish || isLive"
+          />
+          マイクのみ
+        </label>
+      </div>
 
-        <!-- screenの注意（常時表示でも、screen選択時のみでもOK） -->
-        <p v-if="publishMode === 'screen'" class="hint">
-          画面音声は「共有対象」と「共有ダイアログの音声共有設定」に依存します。
-          音声が取得できない場合は配信開始できません。
-        </p>
+      <!-- screenの注意（常時表示でも、screen選択時のみでもOK） -->
+      <p v-if="publishMode === 'screen'" class="hint">
+        画面音声は「共有対象」と「共有ダイアログの音声共有設定」に依存します。
+        音声が取得できない場合は配信開始できません。
+      </p>
 
-        <!-- screen音声が取れなかった時の専用表示 -->
-        <p v-if="screenAudioNotice" class="error">
-          {{ screenAudioNotice }}
-        </p>
+      <!-- screen音声が取れなかった時の専用表示 -->
+      <p v-if="screenAudioNotice" class="error">
+        {{ screenAudioNotice }}
+      </p>
 
-        <div class="buttons">
-          <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
-          <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
-        </div>
+      <div class="buttons">
+        <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
+        <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
+      </div>
 
-        <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
+      <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
 
-        <hr class="live-sep" />
+      <hr class="live-sep" />
 
-        <h3>視聴</h3>
+      <h3>視聴</h3>
 
-        <div class="mode-switch">
-          <label
-            ><input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
-            映像＋音声</label
-          >
-          <label><input v-model="watchMode" type="radio" value="audio" /> 音声のみ</label>
-        </div>
+      <div class="mode-switch">
+        <label
+          ><input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
+          映像＋音声</label
+        >
+        <label><input v-model="watchMode" type="radio" value="audio" /> 音声のみ</label>
+      </div>
 
-        <div class="buttons">
-          <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
-          <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
-        </div>
+      <div class="buttons">
+        <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
+        <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
+      </div>
       <p v-if="isAudioOnlyLive" class="hint">
         現在の配信は音声のみです。視聴は音声のみとなります。
       </p>

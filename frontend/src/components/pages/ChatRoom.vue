@@ -34,7 +34,7 @@
         <div class="log-row"><SpanText :text="`${log.head}${log.content}${log.foot}`" /></div>
       </div>
     </div>
-    <LiveWindowOverlay v-show="isLiveVisible" @close="closeLiveWindow" />
+    <LiveWindowOverlay v-if="shouldRenderLiveOverlay" @close="closeLiveWindow" />
     <img
       v-if="currentRoom != undefined"
       class="room-img"
@@ -206,6 +206,13 @@ const logLinesText = computed(() => {
     return "制限なし";
   }
   return `${settingStore.logLineNumberInteger}行`;
+});
+
+const isLiveEnabledForRoom = computed(() => currentRoom.value?.liveEnabled === true);
+
+// 表示条件（実表示の正本）
+const shouldRenderLiveOverlay = computed(() => {
+  return isLiveVisible.value && isLiveEnabledForRoom.value;
 });
 
 const isMine = (id: string) => {
