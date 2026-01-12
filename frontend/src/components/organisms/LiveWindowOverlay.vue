@@ -9,7 +9,6 @@
     @dragstart.stop
     @dragover.stop
     @pointerdown.stop
-    @pointerup.stop
     @touchstart.stop
     @touchmove.stop
   >
@@ -24,6 +23,7 @@
       <LiveVideoPane :is-audio-only="props.isAudioOnly" @video-ready="onVideoReady" />
     </div>
     <div
+      ref="resizeHandleRef"
       class="live-window__resize-handle"
       @pointerdown.stop.prevent="startResize"
       @mousedown.stop.prevent
@@ -37,25 +37,24 @@ import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import LiveVideoPane from "@/components/organisms/LiveVideoPane.vue";
 import { useLiveVideoStore } from "@/stores/liveVideo";
 
+const props = withDefaults(defineProps<{ isAudioOnly?: boolean }>(), {
+  isAudioOnly: false,
+});
+const emit = defineEmits<{
+  (e: "close"): void;
+}>();
+const CAPTURE_OPTS: EventListenerOptions = { capture: true };
+const ACTIVE_OPTS: AddEventListenerOptions = { capture: true, passive: false };
+
 const MIN_WIDTH = 320;
 const MIN_HEIGHT = 180;
 const VIEWPORT_PADDING_X = 32;
 const VIEWPORT_PADDING_Y = 120;
 const STORAGE_KEY = "live-window-size";
 
-const props = withDefaults(
-  defineProps<{ isAudioOnly?: boolean }>(),
-  {
-    isAudioOnly: false,
-  },
-);
-
-const emit = defineEmits<{
-  (e: "close"): void;
-}>();
-
 const liveVideoStore = useLiveVideoStore();
 const liveWindowRef = ref<HTMLElement | null>(null);
+const resizeHandleRef = ref<HTMLElement | null>(null);
 const activePointerId = ref<number | null>(null);
 const size = ref({ width: 520, height: 320 });
 const maxSize = ref({ width: 520, height: 320 });
@@ -125,8 +124,16 @@ const endResize = (event: PointerEvent) => {
   event.preventDefault();
   event.stopPropagation();
   activePointerId.value = null;
-  document.removeEventListener("pointermove", onResizePointerMove);
-  document.removeEventListener("pointerup", endResize);
+  try {
+    if (resizeHandleRef.value?.hasPointerCapture(event.pointerId)) {
+      resizeHandleRef.value.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // ignore: releasePointerCapture can throw if capture already lost
+  }
+  document.removeEventListener("pointermove", onResizePointerMove, CAPTURE_OPTS);
+  document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
+  document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
   saveStoredSize(size.value);
 };
 
@@ -143,10 +150,11 @@ const startResize = (event: PointerEvent) => {
     width: size.value.width,
     height: size.value.height,
   };
-  const handle = event.currentTarget as HTMLElement | null;
+  const handle = resizeHandleRef.value ?? (event.currentTarget as HTMLElement | null);
   handle?.setPointerCapture(event.pointerId);
-  document.addEventListener("pointermove", onResizePointerMove, { passive: false });
-  document.addEventListener("pointerup", endResize, { passive: false });
+  document.addEventListener("pointermove", onResizePointerMove, ACTIVE_OPTS);
+  document.addEventListener("pointerup", endResize, ACTIVE_OPTS);
+  document.addEventListener("pointercancel", endResize, ACTIVE_OPTS);
 };
 
 const liveWindowStyle = computed(() => ({
@@ -185,10 +193,10 @@ onBeforeUnmount(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", updateMaxSize);
   }
-  document.removeEventListener("pointermove", onResizePointerMove);
-  document.removeEventListener("pointerup", endResize);
+  document.removeEventListener("pointermove", onResizePointerMove, CAPTURE_OPTS);
+  document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
+  document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
 });
-
 </script>
 
 <style scoped>
