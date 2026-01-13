@@ -66,6 +66,9 @@ const registerSocketEvents = () => {
   socketIOInstance.off("COM");
   socketIOInstance.on("COM", ({ id, cmt, style, typing }: COMResParam) => {
     usersStore.updateUserExistence(id, true); // TODO: この操作の必要性を検証する必要あり
+    if (id === userStore.myID) {
+      window.gtag?.("event", "chat_message_sent", { client: "web" });
+    }
     if (usersStore.visibleUsers[id] === undefined) return;
     if (usersStore.silentUsers[id] !== undefined) return;
     if (userStore.myID !== id) {
