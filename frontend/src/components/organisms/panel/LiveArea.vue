@@ -190,7 +190,9 @@ import {
   type CameraFacing,
   type CameraStreamOptions,
 } from "@/webrtc/cameraManager";
+import { replaceVideoTrackSafely } from "@/webrtc/cameraSwitch";
 import { MediaAcquireError } from "@/webrtc/mediaErrors";
+import { restartPublishSessionSafely as restartPublishSessionSafelyHelper } from "@/webrtc/publishRestart";
 import {
   LiveRoomsChangedPayload,
   socketIOInstance,
@@ -419,13 +421,14 @@ const restartPublishSession = async (options: CameraStreamOptions) => {
 };
 
 const restartPublishSessionSafely = async (options: CameraStreamOptions) => {
-  try {
-    await restartPublishSession(options);
-  } catch (e) {
-    logErrorSafe("restartPublishSession failed", e);
-    appendErrorMessage("配信の再開に失敗したため配信を停止しました。");
-    await stopPublishSafely("restart-failed", { uiPolicy: "user-action", preserveUiErrors: true });
-  }
+  await restartPublishSessionSafelyHelper({
+    restartPublishSession: () => restartPublishSession(options),
+    stopPublishSafely,
+    onRestartError: (e) => logErrorSafe("restartPublishSession failed", e),
+    onUiError: () => {
+      appendErrorMessage("配信の再開に失敗したため配信を停止しました。");
+    },
+  });
 };
 
 const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
@@ -434,38 +437,13 @@ const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
   if (!sender) {
     throw new Error("video-sender-missing");
   }
-
-  const stream = await getCameraStream({ ...options, audio: false });
-  const nextTrack = stream.getVideoTracks()[0];
-  if (!nextTrack) {
-    stopStreamTracks(stream);
-    throw new Error("video-track-missing");
-  }
-
-  try {
-    await sender.replaceTrack(nextTrack);
-  } catch (e) {
-    stopStreamTracks(stream);
-    throw e;
-  }
-
-  if (currentPublishVideoTrack.value && currentPublishVideoTrack.value !== nextTrack) {
-    try {
-      currentPublishVideoTrack.value.stop();
-    } catch {
-      // ignore
-    }
-  }
+  const nextTrack = await replaceVideoTrackSafely({
+    sender,
+    currentTrack: currentPublishVideoTrack.value,
+    getCameraStream,
+    options,
+  });
   currentPublishVideoTrack.value = nextTrack;
-  for (const track of stream.getTracks()) {
-    if (track !== nextTrack) {
-      try {
-        track.stop();
-      } catch {
-        // ignore
-      }
-    }
-  }
 };
 
 const updatePublishCameraTrackSafely = async (
