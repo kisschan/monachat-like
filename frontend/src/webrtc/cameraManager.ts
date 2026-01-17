@@ -36,7 +36,9 @@ export const listVideoInputs = async (): Promise<MediaDeviceInfo[]> => {
 
   const initial = await mediaDevices.enumerateDevices();
   const videoInputs = initial.filter((device) => device.kind === "videoinput");
-  const needsUnlock = videoInputs.length > 0 && videoInputs.every((device) => device.label === "");
+  const needsUnlock =
+    videoInputs.length === 0 ||
+    (videoInputs.length > 0 && videoInputs.every((device) => device.label === ""));
 
   if (needsUnlock) {
     await ensureDeviceLabelsUnlocked();
@@ -66,7 +68,7 @@ const buildVideoConstraints = (options: CameraStreamOptions): MediaTrackConstrai
     constraints.frameRate = { ideal: options.fpsIdeal };
   }
 
-  if (options.deviceId) {
+  if (options.deviceId != null) {
     constraints.deviceId = { exact: options.deviceId };
   } else if (options.facing) {
     constraints.facingMode = { ideal: options.facing };

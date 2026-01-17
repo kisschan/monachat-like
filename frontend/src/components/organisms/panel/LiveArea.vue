@@ -60,7 +60,7 @@
             playsinline
             muted
           ></video>
-          <p class="hint camera-controls__hint">
+          <p class="camera-controls__hint hint">
             カメラプレビュー（配信前）。切替後の確認に使えます。
           </p>
         </div>
@@ -77,11 +77,7 @@
           />
         </div>
         <label class="camera-controls__option">
-          <input
-            v-model="preferRearOnStart"
-            type="checkbox"
-            :disabled="isBusyPublish || isLive"
-          />
+          <input v-model="preferRearOnStart" type="checkbox" :disabled="isBusyPublish || isLive" />
           開始時に外カメラを優先
         </label>
       </div>
@@ -252,6 +248,7 @@ const screenAudioNotice = ref<string | null>(null);
 const cameraFacing = ref<CameraFacing>("user");
 const preferRearOnStart = ref(false);
 const cameraDeviceId = ref<string | null>(null);
+const cameraDeviceIdFacing = ref<CameraFacing | null>(null);
 const cameraDevices = ref<MediaDeviceInfo[]>([]);
 const isSwitchingCamera = ref(false);
 const previewVideoRef = ref<HTMLVideoElement | null>(null);
@@ -351,7 +348,8 @@ const resolveCameraDeviceId = async (facing: CameraFacing): Promise<string | nul
 };
 
 const getCameraOptionsForFacing = async (facing: CameraFacing): Promise<CameraStreamOptions> => {
-  const deviceId = cameraDeviceId.value ?? (await resolveCameraDeviceId(facing));
+  const canReuse = cameraDeviceId.value != null && cameraDeviceIdFacing.value === facing;
+  const deviceId = canReuse ? cameraDeviceId.value : await resolveCameraDeviceId(facing);
   if (deviceId) {
     return { deviceId, facing, widthIdeal: 1280, heightIdeal: 720 };
   }
@@ -865,11 +863,13 @@ const onClickStartPreview = async () => {
   try {
     const options = await getCameraOptionsForFacing(cameraFacing.value);
     cameraDeviceId.value = options.deviceId ?? null;
-    await startPreviewStream(cameraFacing.value);
+    cameraDeviceIdFacing.value = cameraFacing.value;
+    await startPreviewStream(cameraFacing.value); // 後述: options渡す形にしてもよい
   } catch (e) {
     if (e instanceof MediaAcquireError) {
       if (e.code === "permission-denied") {
-        errorMessage.value = "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。";
+        errorMessage.value =
+          "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。";
       } else if (e.code === "no-device") {
         errorMessage.value = "利用可能なカメラが見つかりません。";
       } else if (e.code === "constraint-failed") {
@@ -890,11 +890,15 @@ const onClickToggleCamera = async () => {
   const nextFacing: CameraFacing = cameraFacing.value === "user" ? "environment" : "user";
   isSwitchingCamera.value = true;
   try {
+    // ★向きが変わるのでキャッシュ無効化（これが無いと永遠に同じ deviceId）
+    cameraDeviceId.value = null;
+    cameraDeviceIdFacing.value = null;
     const options = await getCameraOptionsForFacing(nextFacing);
     cameraDeviceId.value = options.deviceId ?? null;
+    cameraDeviceIdFacing.value = nextFacing;
     cameraFacing.value = nextFacing;
 
-    if (!isLive.value) {
+    if (!publishHandle.value) {
       await startPreviewStream(nextFacing);
     }
 
@@ -909,7 +913,9 @@ const onClickToggleCamera = async () => {
   } catch (e) {
     if (e instanceof MediaAcquireError) {
       if (e.code === "permission-denied") {
-        appendErrorMessage("カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。");
+        appendErrorMessage(
+          "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。",
+        );
       } else if (e.code === "no-device") {
         appendErrorMessage("利用可能なカメラが見つかりません。");
       } else if (e.code === "constraint-failed") {
