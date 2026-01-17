@@ -20,10 +20,10 @@ class FakeStream {
     return this.tracks;
   }
   getVideoTracks() {
-    return this.tracks.filter((track) => track.kind === "video");
+    return this.tracks.filter((t) => t.kind === "video");
   }
   getAudioTracks() {
-    return this.tracks.filter((track) => track.kind === "audio");
+    return this.tracks.filter((t) => t.kind === "audio");
   }
 }
 
@@ -43,7 +43,6 @@ class FakeRTCPeerConnection {
   senders: FakeSender[] = [];
   iceGatheringState = "complete" as RTCIceGatheringState;
 
-  // NOTE: 本番は addTrack(track, stream) で呼ばれるが、JSは余剰引数を無視できるので引数は1つでOK
   addTrack(track: FakeTrack) {
     const sender = new FakeSender(track);
     this.senders.push(sender);
@@ -71,12 +70,45 @@ class FakeRTCPeerConnection {
   close() {}
 }
 
+const state = vi.hoisted(() => ({
+  cameraStream: null as unknown as FakeStream,
+}));
+
+vi.mock("@/webrtc/cameraManager", () => ({
+  getCameraStream: vi.fn(async () => state.cameraStream),
+}));
+vi.mock("/src/webrtc/cameraManager.ts", () => ({
+  getCameraStream: vi.fn(async () => state.cameraStream),
+}));
+
+vi.mock("@/webrtc/ice", () => ({
+  waitForIceGatheringComplete: vi.fn(async () => {}),
+}));
+vi.mock("/src/webrtc/ice.ts", () => ({
+  waitForIceGatheringComplete: vi.fn(async () => {}),
+}));
+
+// ★ここだけに統一（重複mock禁止）
+const webRTChelperMock = vi.hoisted(() => ({
+  requireCreatedSdpWithLocation: vi.fn(async () => ({
+    resourceUrl: "https://example.test/whip/123",
+    answerSdp: "answer-sdp",
+  })),
+}));
+
+vi.mock("@/webrtc/webRTChelper", () => webRTChelperMock);
+vi.mock("/src/webrtc/webRTChelper", () => webRTChelperMock);
+vi.mock("/src/webrtc/webRTChelper.ts", () => webRTChelperMock);
+
 describe("startWhipPublish stop cleanup", () => {
   beforeEach(() => {
+    vi.resetModules();
+
     vi.stubGlobal(
       "RTCPeerConnection",
       FakeRTCPeerConnection as unknown as typeof RTCPeerConnection,
     );
+
     vi.stubGlobal(
       "RTCSessionDescription",
       class {
@@ -88,11 +120,16 @@ describe("startWhipPublish stop cleanup", () => {
         }
       } as unknown as typeof RTCSessionDescription,
     );
+
+    vi.stubGlobal("fetch", vi.fn(async () => ({ status: 201 })) as unknown as typeof fetch);
+
+    // hoisted mock の呼び出し履歴を各テストでリセットしたければここ
+    webRTChelperMock.requireCreatedSdpWithLocation.mockClear();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
+    vi.clearAllMocks();
   });
 
   it("stops the current sender track after replaceTrack", async () => {
@@ -100,35 +137,17 @@ describe("startWhipPublish stop cleanup", () => {
 
     const initialVideo = new FakeTrack("video");
     const initialAudio = new FakeTrack("audio");
-    const cameraStream = new FakeStream([initialVideo, initialAudio]);
-
-    vi.doMock("@/webrtc/cameraManager", () => ({
-      getCameraStream: vi.fn(async () => cameraStream),
-    }));
-    vi.doMock("@/webrtc/ice", () => ({
-      waitForIceGatheringComplete: vi.fn(async () => {}),
-    }));
-    vi.doMock("@/webrtc/webRTChelper", () => ({
-      requireCreatedSdpWithLocation: vi.fn(async () => ({
-        resourceUrl: "https://example.test/whip/123",
-        answerSdp: "answer-sdp",
-      })),
-    }));
-
-    const fetchSpy = vi.fn(async () => ({ status: 201 }));
-    vi.stubGlobal("fetch", fetchSpy as unknown as typeof fetch);
+    state.cameraStream = new FakeStream([initialVideo, initialAudio]);
 
     const { startWhipPublish } = await import("@/webrtc/whipClient");
 
     const handle = await startWhipPublish("https://example.test/whip", { mode: "camera" });
 
     const replacedVideo = new FakeTrack("video");
-    const videoSender = handle.senders.find((sender) => sender.track?.kind === "video");
+    const videoSender = handle.senders.find((s) => s.track?.kind === "video");
 
-    // 「条件分岐（throw）」を消して、expectで存在保証だけする
     expect(videoSender).toBeTruthy();
 
-    // TSの型狭めはしないので、非null断言で進める（条件分岐は入れない）
     await (
       videoSender! as unknown as { replaceTrack: (t: MediaStreamTrack) => Promise<void> }
     ).replaceTrack(replacedVideo as unknown as MediaStreamTrack);

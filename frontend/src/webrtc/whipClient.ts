@@ -1,7 +1,7 @@
-import { getCameraStream, type CameraStreamOptions } from "./cameraManager";
-import { waitForIceGatheringComplete } from "./ice";
-import { MediaAcquireError, toMediaAcquireError } from "./mediaErrors";
-import { requireCreatedSdpWithLocation } from "./webRTChelper";
+import { getCameraStream, type CameraStreamOptions } from "@/webrtc/cameraManager";
+import { waitForIceGatheringComplete } from "@/webrtc/ice";
+import { MediaAcquireError, toMediaAcquireError } from "@/webrtc/mediaErrors";
+import { requireCreatedSdpWithLocation } from "@/webrtc/webRTChelper";
 
 export type PublishMode = "camera" | "screen" | "audio";
 

@@ -27,6 +27,7 @@ class FakeStream {
 
 describe("replaceVideoTrackSafely", () => {
   it("stops acquired tracks when replaceTrack fails", async () => {
+    expect.hasAssertions();
     const videoTrack = new FakeTrack("video");
     const audioTrack = new FakeTrack("audio");
     const stream = new FakeStream([videoTrack, audioTrack]);
