@@ -192,6 +192,7 @@ import {
 } from "@/webrtc/cameraManager";
 import { replaceVideoTrackSafely } from "@/webrtc/cameraSwitch";
 import { MediaAcquireError } from "@/webrtc/mediaErrors";
+import { restartPublishSessionSafely as restartPublishSessionSafelyHelper } from "@/webrtc/publishRestart";
 import {
   LiveRoomsChangedPayload,
   socketIOInstance,
@@ -435,6 +436,17 @@ const restartPublishSession = async (options: CameraStreamOptions) => {
   refreshPublishVideoTrack();
 };
 
+const restartPublishSessionSafely = async (options: CameraStreamOptions) => {
+  await restartPublishSessionSafelyHelper({
+    restartPublishSession: () => restartPublishSession(options),
+    stopPublishSafely,
+    onRestartError: (e) => logErrorSafe("restartPublishSession failed", e),
+    onUiError: () => {
+      appendErrorMessage("配信の再開に失敗したため配信を停止しました。");
+    },
+  });
+};
+
 const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
   if (!publishHandle.value) return;
   const sender = publishHandle.value.senders.find((item) => item.track?.kind === "video");
@@ -448,6 +460,19 @@ const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
     options,
   });
   currentPublishVideoTrack.value = nextTrack;
+};
+
+const updatePublishCameraTrackSafely = async (
+  options: CameraStreamOptions,
+  nextFacing: CameraFacing,
+) => {
+  if (!publishHandle.value || publishMode.value !== "camera") return;
+  try {
+    await replacePublishVideoTrack({ ...options, facing: nextFacing });
+  } catch (e) {
+    logErrorSafe("replaceTrack failed, restarting publish session", e);
+    await restartPublishSessionSafely({ ...options, facing: nextFacing });
+  }
 };
 
 const handleLiveRoomsChanged = (p: LiveRoomsChangedPayload) => {
