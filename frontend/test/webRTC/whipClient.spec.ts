@@ -78,11 +78,9 @@ const cameraManagerMock = vi.hoisted(() => ({
   getCameraStream: vi.fn(async () => state.cameraStream),
 }));
 vi.mock("@/webrtc/cameraManager", () => cameraManagerMock);
-vi.mock("/src/webrtc/cameraManager.ts", () => cameraManagerMock);
 
 const iceMock = vi.hoisted(() => ({ waitForIceGatheringComplete: vi.fn(async () => {}) }));
-vi.mock("@/webrtc/ice", () => iceMock);
-vi.mock("/src/webrtc/ice.ts", () => iceMock);
+vi.mock("/src/webrtc/webRTChelper", () => iceMock);
 
 const webRTChelperMock = vi.hoisted(() => ({
   requireCreatedSdpWithLocation: vi.fn(async () => ({
@@ -91,13 +89,15 @@ const webRTChelperMock = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@/webrtc/webRTChelper", () => webRTChelperMock);
-vi.mock("/src/webrtc/webRTChelper.ts", () => webRTChelperMock);
+vi.mock("/src/webrtc/webRTChelper", () => ({
+  requireCreatedSdpWithLocation: vi.fn(async () => ({
+    resourceUrl: "https://example.test/whip/123",
+    answerSdp: "answer-sdp",
+  })),
+}));
 
 describe("startWhipPublish stop cleanup", () => {
   beforeEach(() => {
-    vi.resetModules();
-
     vi.stubGlobal(
       "RTCPeerConnection",
       FakeRTCPeerConnection as unknown as typeof RTCPeerConnection,
@@ -117,7 +117,15 @@ describe("startWhipPublish stop cleanup", () => {
 
     vi.stubGlobal("fetch", vi.fn(async () => ({ status: 201 })) as unknown as typeof fetch);
 
-    // hoisted mock の呼び出し履歴を各テストでリセットしたければここ
+    vi.stubGlobal("navigator", {
+      mediaDevices: {
+        enumerateDevices: vi.fn(async () => []),
+      },
+    } as unknown as typeof navigator);
+
+    vi.resetModules();
+    cameraManagerMock.getCameraStream.mockClear();
+    iceMock.waitForIceGatheringComplete.mockClear();
     webRTChelperMock.requireCreatedSdpWithLocation.mockClear();
   });
 
