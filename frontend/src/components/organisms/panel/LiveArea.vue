@@ -366,6 +366,16 @@ const pickFrontCameraDeviceId = (devices: MediaDeviceInfo[]): string | null => {
 const resolveCameraDeviceId = async (facing: CameraFacing): Promise<string | null> => {
   const devices = await loadCameraDevices().catch(() => cameraDevices.value);
   if (devices.length === 0) return null;
+  const hasLabeledDevice = devices.some((device) => device.label.trim() !== "");
+  if (!hasLabeledDevice) {
+    if (!isProd) {
+      console.debug("resolveCameraDeviceId: device labels unavailable; fallback to facingMode", {
+        facing,
+        count: devices.length,
+      });
+    }
+    return null;
+  }
   if (facing === "environment") {
     return pickRearCameraDeviceId(devices) ?? devices[0]?.deviceId ?? null;
   }
@@ -375,6 +385,12 @@ const resolveCameraDeviceId = async (facing: CameraFacing): Promise<string | nul
 const getCameraOptionsForFacing = async (facing: CameraFacing): Promise<CameraStreamOptions> => {
   const canReuse = cameraDeviceId.value != null && cameraDeviceIdFacing.value === facing;
   const deviceId = canReuse ? cameraDeviceId.value : await resolveCameraDeviceId(facing);
+  if (!isProd) {
+    console.debug("getCameraOptionsForFacing:", {
+      facing,
+      hasDeviceId: deviceId != null,
+    });
+  }
   if (deviceId) {
     return { deviceId, facing, widthIdeal: 1280, heightIdeal: 720 };
   }
