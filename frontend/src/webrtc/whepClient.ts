@@ -1,5 +1,5 @@
 import { waitForIceGatheringComplete } from "./ice";
-import { requireCreatedSdpWithLocation } from "./webRTChelper";
+import { requireCreatedSdpWithLocation } from "@/webrtc/webRTChelper";
 
 export type WhepSubscribeHandle = {
   stop: () => Promise<void>;

@@ -109,7 +109,7 @@ describe("requireCreatedSdpWithLocation", () => {
     });
 
     await expect(requireCreatedSdpWithLocation(res as Response, baseUrl, "whip")).rejects.toThrow(
-      /missing Location/i,
+      /Access-Control-Expose-Headers: Location/i,
     );
   });
 
@@ -221,6 +221,24 @@ describe("レスポンス検証（Content-Type/SDP）", () => {
         Location: locationHeader,
       },
       body: sdp,
+    });
+    await expect(requireCreatedSdpWithLocation(res as Response, baseUrl, "whip")).rejects.toThrow(
+      /invalid SDP answer body/i,
+    );
+  });
+
+  it("sDP本文が空の場合はエラーになる", async () => {
+    expect.hasAssertions();
+    const baseUrl = "https://live.monachat.tech/whip/?app=live&stream=abc&auth=whip%3Axxx";
+    const locationHeader =
+      "https://live.monachat.tech/rtc/v1/whip/?app=live&stream=abc&session=s1&token=srsToken";
+    const res = mockResponse({
+      status: 201,
+      headers: {
+        "Content-Type": "application/sdp",
+        Location: locationHeader,
+      },
+      body: "",
     });
     await expect(requireCreatedSdpWithLocation(res as Response, baseUrl, "whip")).rejects.toThrow(
       /invalid SDP answer body/i,
