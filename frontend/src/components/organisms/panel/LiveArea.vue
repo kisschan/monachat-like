@@ -935,25 +935,50 @@ const onClickStartPreview = async () => {
 };
 
 const onClickToggleCamera = async () => {
-  if (!ensureCameraOperationAllowed()) return;
   clearPublishUiErrors();
-  const nextFacing: CameraFacing = cameraFacing.value === "user" ? "environment" : "user";
+
+  const prevFacing = cameraFacing.value;
+  const nextFacing: CameraFacing = prevFacing === "user" ? "environment" : "user";
+
+  if (isSwitchingCamera.value) return;
   isSwitchingCamera.value = true;
+
   try {
-    // ★向きが変わるのでキャッシュ無効化（これが無いと永遠に同じ deviceId）
-    cameraDeviceId.value = null;
-    cameraDeviceIdFacing.value = null;
+    // 1) まず nextFacing の options を作る（ここでは state を更新しない）
     const options = await getCameraOptionsForFacing(nextFacing);
-    cameraDeviceId.value = options.deviceId ?? null;
-    cameraDeviceIdFacing.value = nextFacing;
-    cameraFacing.value = nextFacing;
 
     if (!publishHandle.value) {
-      await startPreviewStream(nextFacing);
+      // ===== プレビュー切替：成功してから差し替える（失敗したら現状維持） =====
+      const nextStream = await getCameraStream({ ...options, audio: false });
+
+      // ここまで来たら成功なので差し替え
+      stopPreviewStream();
+      attachPreviewStream(nextStream);
+
+      // 成功時のみ state をコミット
+      cameraFacing.value = nextFacing;
+      cameraDeviceId.value = options.deviceId ?? null;
+      cameraDeviceIdFacing.value = nextFacing;
+      return;
     }
 
-    await updatePublishCameraTrackSafely(options, nextFacing);
+    if (publishHandle.value && publishMode.value === "camera") {
+      // ===== 配信中の切替：replaceTrack → 失敗なら restart。成功後だけ state をコミット =====
+      try {
+        await replacePublishVideoTrack({ ...options, facing: nextFacing });
+      } catch (e) {
+        console.warn("replaceTrack failed, restarting publish session", e);
+        await restartPublishSession({ ...options, facing: nextFacing });
+      }
+
+      // 成功時のみ state をコミット
+      cameraFacing.value = nextFacing;
+      cameraDeviceId.value = options.deviceId ?? null;
+      cameraDeviceIdFacing.value = nextFacing;
+    }
   } catch (e) {
+    // 失敗時：state は触らない（prevFacingのまま）
+    // 表示と実体の乖離を起こさないために「戻す」処理は不要（そもそも進めてない）
     if (e instanceof MediaAcquireError) {
       if (e.code === "permission-denied") {
         appendErrorMessage(
