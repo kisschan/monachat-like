@@ -74,21 +74,16 @@ const state = vi.hoisted(() => ({
   cameraStream: null as unknown as FakeStream,
 }));
 
-vi.mock("@/webrtc/cameraManager", () => ({
+const cameraManagerMock = vi.hoisted(() => ({
   getCameraStream: vi.fn(async () => state.cameraStream),
 }));
-vi.mock("/src/webrtc/cameraManager.ts", () => ({
-  getCameraStream: vi.fn(async () => state.cameraStream),
-}));
+vi.mock("@/webrtc/cameraManager", () => cameraManagerMock);
+vi.mock("/src/webrtc/cameraManager.ts", () => cameraManagerMock);
 
-vi.mock("@/webrtc/ice", () => ({
-  waitForIceGatheringComplete: vi.fn(async () => {}),
-}));
-vi.mock("/src/webrtc/ice.ts", () => ({
-  waitForIceGatheringComplete: vi.fn(async () => {}),
-}));
+const iceMock = vi.hoisted(() => ({ waitForIceGatheringComplete: vi.fn(async () => {}) }));
+vi.mock("@/webrtc/ice", () => iceMock);
+vi.mock("/src/webrtc/ice.ts", () => iceMock);
 
-// ★ここだけに統一（重複mock禁止）
 const webRTChelperMock = vi.hoisted(() => ({
   requireCreatedSdpWithLocation: vi.fn(async () => ({
     resourceUrl: "https://example.test/whip/123",
@@ -97,7 +92,6 @@ const webRTChelperMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/webrtc/webRTChelper", () => webRTChelperMock);
-vi.mock("/src/webrtc/webRTChelper", () => webRTChelperMock);
 vi.mock("/src/webrtc/webRTChelper.ts", () => webRTChelperMock);
 
 describe("startWhipPublish stop cleanup", () => {
