@@ -71,6 +71,17 @@ const stopStream = (s: MediaStream): void => {
   }
 };
 
+const stopTracks = (tracks: Array<MediaStreamTrack | null | undefined>): void => {
+  for (const track of tracks) {
+    if (track == null) continue;
+    try {
+      track.stop();
+    } catch {
+      // ignore
+    }
+  }
+};
+
 async function getStreamForMode(
   mode: PublishMode,
   cameraOptions: CameraStreamOptions = {},
@@ -211,8 +222,13 @@ export async function startWhipPublish(
           await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
         }
       } finally {
-        pc?.close();
-        for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
+        try {
+          const senderTracks = pc?.getSenders().map((sender) => sender.track) ?? [];
+          stopTracks(senderTracks);
+          for (const s of sourceStreams) stopStream(s);
+        } finally {
+          pc?.close();
+        }
       }
     };
 
@@ -226,8 +242,13 @@ export async function startWhipPublish(
     if (!stopped && resourceUrl != null) {
       await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
     }
-    pc?.close();
-    for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
+    try {
+      const senderTracks = pc?.getSenders().map((sender) => sender.track) ?? [];
+      stopTracks(senderTracks);
+      for (const s of sourceStreams) stopStream(s);
+    } finally {
+      pc?.close();
+    }
     throw e;
   }
 }
