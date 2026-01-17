@@ -68,7 +68,7 @@
               />
               <PrimeButton
                 :label="cameraFacing === 'user' ? '外カメラへ切替' : '内カメラへ切替'"
-                :disabled="isBusyPublish || isSwitchingCamera"
+                :disabled="isBusyPublish || isSwitchingCamera || isOtherLive"
                 @click="onClickToggleCamera"
               />
             </div>
@@ -320,6 +320,7 @@ const liveEnabled = computed(() => {
 const isMyLive = computed(
   () => isLive.value && publisherId.value != null && publisherId.value === myId.value,
 );
+const isOtherLive = computed(() => isLive.value && !isMyLive.value);
 
 // =====================
 // Socket.IO 配信状態変化受信
@@ -417,6 +418,16 @@ const restartPublishSession = async (options: CameraStreamOptions) => {
   refreshPublishVideoTrack();
 };
 
+const restartPublishSessionSafely = async (options: CameraStreamOptions) => {
+  try {
+    await restartPublishSession(options);
+  } catch (e) {
+    logErrorSafe("restartPublishSession failed", e);
+    appendErrorMessage("配信の再開に失敗したため配信を停止しました。");
+    await stopPublishSafely("restart-failed", { uiPolicy: "user-action", preserveUiErrors: true });
+  }
+};
+
 const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
   if (!publishHandle.value) return;
   const sender = publishHandle.value.senders.find((item) => item.track?.kind === "video");
@@ -454,6 +465,19 @@ const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
         // ignore
       }
     }
+  }
+};
+
+const updatePublishCameraTrackSafely = async (
+  options: CameraStreamOptions,
+  nextFacing: CameraFacing,
+) => {
+  if (!publishHandle.value || publishMode.value !== "camera") return;
+  try {
+    await replacePublishVideoTrack({ ...options, facing: nextFacing });
+  } catch (e) {
+    logErrorSafe("replaceTrack failed, restarting publish session", e);
+    await restartPublishSessionSafely({ ...options, facing: nextFacing });
   }
 };
 
@@ -604,6 +628,14 @@ type StopPublishOpts = {
 const appendErrorMessage = (msg: string) => {
   if (errorMessage.value) errorMessage.value = `${errorMessage.value}\n${msg}`;
   else errorMessage.value = msg;
+};
+
+const ensureCameraOperationAllowed = (): boolean => {
+  if (isOtherLive.value) {
+    appendErrorMessage("他のユーザーが配信中のため、カメラ操作はできません。");
+    return false;
+  }
+  return true;
 };
 
 const isBenignStopLiveError = (e: unknown): boolean => {
@@ -881,6 +913,7 @@ const onClickStopPublish = async () => {
 };
 
 const onClickStartPreview = async () => {
+  if (!ensureCameraOperationAllowed()) return;
   clearPublishUiErrors();
   try {
     const options = await getCameraOptionsForFacing(cameraFacing.value);
@@ -908,6 +941,7 @@ const onClickStartPreview = async () => {
 };
 
 const onClickToggleCamera = async () => {
+  if (!ensureCameraOperationAllowed()) return;
   clearPublishUiErrors();
   const nextFacing: CameraFacing = cameraFacing.value === "user" ? "environment" : "user";
   isSwitchingCamera.value = true;
@@ -924,14 +958,7 @@ const onClickToggleCamera = async () => {
       await startPreviewStream(nextFacing);
     }
 
-    if (publishHandle.value && publishMode.value === "camera") {
-      try {
-        await replacePublishVideoTrack({ ...options, facing: nextFacing });
-      } catch (e) {
-        console.warn("replaceTrack failed, restarting publish session", e);
-        await restartPublishSession({ ...options, facing: nextFacing });
-      }
-    }
+    await updatePublishCameraTrackSafely(options, nextFacing);
   } catch (e) {
     if (e instanceof MediaAcquireError) {
       if (e.code === "permission-denied") {
