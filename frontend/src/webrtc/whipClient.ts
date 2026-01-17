@@ -1,4 +1,6 @@
+import { getCameraStream, type CameraStreamOptions } from "./cameraManager";
 import { waitForIceGatheringComplete } from "./ice";
+import { MediaAcquireError, toMediaAcquireError } from "./mediaErrors";
 import { requireCreatedSdpWithLocation } from "./webRTChelper";
 
 export type PublishMode = "camera" | "screen" | "audio";
@@ -15,22 +17,8 @@ export type WhipPublishHandle = {
 export type WhipPublishOptions = {
   mode?: PublishMode;
   onDisplayEnded?: () => void;
+  camera?: CameraStreamOptions;
 };
-
-export class MediaAcquireError extends Error {
-  code:
-    | "permission-denied"
-    | "no-device"
-    | "constraint-failed"
-    | "not-supported"
-    | "screen-audio-unavailable"
-    | "unknown";
-
-  constructor(code: MediaAcquireError["code"], message?: string) {
-    super(message);
-    this.code = code;
-  }
-}
 
 export class PublishCancelledError extends Error {
   reason: "display-ended";
@@ -40,47 +28,9 @@ export class PublishCancelledError extends Error {
   }
 }
 
-const toMediaAcquireError = (e: unknown): MediaAcquireError => {
-  if (e instanceof DOMException) {
-    if (e.name === "NotAllowedError" || e.name === "SecurityError") {
-      return new MediaAcquireError("permission-denied", e.message);
-    }
-    if (e.name === "NotFoundError") {
-      return new MediaAcquireError("no-device", e.message);
-    }
-    if (e.name === "OverconstrainedError") {
-      return new MediaAcquireError("constraint-failed", e.message);
-    }
-    if (e.name === "NotSupportedError") {
-      return new MediaAcquireError("not-supported", e.message);
-    }
-  }
-
-  // getDisplayMedia 未実装環境で起きがち
-  if (e instanceof TypeError) {
-    return new MediaAcquireError("not-supported", e.message);
-  }
-
-  return new MediaAcquireError("unknown", e instanceof Error ? e.message : String(e));
-};
-
 const getMicStream = async (): Promise<MediaStream> => {
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  } catch (e: unknown) {
-    throw toMediaAcquireError(e);
-  }
-};
-
-const getCameraStream = async (): Promise<MediaStream> => {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: {
-        width: 1280,
-        height: 720,
-      },
-    });
   } catch (e: unknown) {
     throw toMediaAcquireError(e);
   }
@@ -121,7 +71,10 @@ const stopStream = (s: MediaStream): void => {
   }
 };
 
-async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult> {
+async function getStreamForMode(
+  mode: PublishMode,
+  cameraOptions: CameraStreamOptions = {},
+): Promise<StreamForModeResult> {
   if (mode === "audio") {
     const micStream = await getMicStream();
     return { composed: micStream, sources: [micStream] };
@@ -155,7 +108,12 @@ async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult>
     };
   }
 
-  const cameraStream = await getCameraStream();
+  const cameraStream = await getCameraStream({
+    audio: true,
+    widthIdeal: 1280,
+    heightIdeal: 720,
+    ...cameraOptions,
+  });
   return { composed: cameraStream, sources: [cameraStream] };
 }
 
@@ -181,7 +139,7 @@ export async function startWhipPublish(
   const senders: RTCRtpSender[] = [];
 
   try {
-    const streamResult = await getStreamForMode(mode);
+    const streamResult = await getStreamForMode(mode, options.camera);
     composedStream = streamResult.composed;
     sourceStreams = streamResult.sources;
     displayTrack = streamResult.displayVideoTrack;

@@ -51,6 +51,41 @@
         音声が取得できない場合は配信開始できません。
       </p>
 
+      <div v-if="publishMode === 'camera'" class="camera-controls">
+        <div class="camera-controls__preview">
+          <video
+            ref="previewVideoRef"
+            class="camera-controls__video"
+            autoplay
+            playsinline
+            muted
+          ></video>
+          <p class="hint camera-controls__hint">
+            カメラプレビュー（配信前）。切替後の確認に使えます。
+          </p>
+        </div>
+        <div class="camera-controls__actions">
+          <PrimeButton
+            :label="isPreviewing ? 'プレビュー更新' : 'プレビュー開始'"
+            :disabled="isBusyPublish || isLive || isSwitchingCamera"
+            @click="onClickStartPreview"
+          />
+          <PrimeButton
+            :label="cameraFacing === 'user' ? '外カメラへ切替' : '内カメラへ切替'"
+            :disabled="isBusyPublish || isSwitchingCamera"
+            @click="onClickToggleCamera"
+          />
+        </div>
+        <label class="camera-controls__option">
+          <input
+            v-model="preferRearOnStart"
+            type="checkbox"
+            :disabled="isBusyPublish || isLive"
+          />
+          開始時に外カメラを優先
+        </label>
+      </div>
+
       <!-- screen音声が取れなかった時の専用表示 -->
       <p v-if="screenAudioNotice" class="error">
         {{ screenAudioNotice }}
@@ -131,12 +166,19 @@ import { useLiveVideoStore } from "@/stores/liveVideo";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
+  getCameraStream,
+  listVideoInputs,
+  pickRearCameraDeviceId,
+  type CameraFacing,
+  type CameraStreamOptions,
+} from "@/webrtc/cameraManager";
+import { MediaAcquireError } from "@/webrtc/mediaErrors";
+import {
   LiveRoomsChangedPayload,
   socketIOInstance,
   type LiveStatusChangePayload,
 } from "@/socketIOInstance";
 import {
-  MediaAcquireError,
   PublishCancelledError,
   startWhipPublish,
   type WhipPublishHandle,
@@ -207,6 +249,16 @@ const publisherId = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
 const publishMode = ref<PublishMode>("camera");
 const screenAudioNotice = ref<string | null>(null);
+const cameraFacing = ref<CameraFacing>("user");
+const preferRearOnStart = ref(false);
+const cameraDeviceId = ref<string | null>(null);
+const cameraDevices = ref<MediaDeviceInfo[]>([]);
+const isSwitchingCamera = ref(false);
+const previewVideoRef = ref<HTMLVideoElement | null>(null);
+const previewStream = ref<MediaStream | null>(null);
+const isPreviewing = computed(() => previewStream.value != null);
+const whipUrlCache = ref<string | null>(null);
+const currentPublishVideoTrack = ref<MediaStreamTrack | null>(null);
 const isReadyToLoadLiveRooms = computed(() => {
   return !!token.value && !!roomId.value;
 });
@@ -256,6 +308,133 @@ const isMyLive = computed(
 const clearPublishUiErrors = () => {
   errorMessage.value = null;
   screenAudioNotice.value = null;
+};
+
+const stopStreamTracks = (stream: MediaStream | null) => {
+  if (!stream) return;
+  for (const track of stream.getTracks()) {
+    try {
+      track.stop();
+    } catch {
+      // ignore
+    }
+  }
+};
+
+const stopPreviewStream = () => {
+  stopStreamTracks(previewStream.value);
+  previewStream.value = null;
+  if (previewVideoRef.value) {
+    previewVideoRef.value.srcObject = null;
+  }
+};
+
+const loadCameraDevices = async (): Promise<MediaDeviceInfo[]> => {
+  const devices = await listVideoInputs();
+  cameraDevices.value = devices;
+  return devices;
+};
+
+const pickFrontCameraDeviceId = (devices: MediaDeviceInfo[]): string | null => {
+  const frontPattern = /(front|user|selfie|前面|内側|内カメ)/i;
+  const matched = devices.find((device) => frontPattern.test(device.label));
+  return matched?.deviceId ?? devices[0]?.deviceId ?? null;
+};
+
+const resolveCameraDeviceId = async (facing: CameraFacing): Promise<string | null> => {
+  const devices = await loadCameraDevices().catch(() => cameraDevices.value);
+  if (devices.length === 0) return null;
+  if (facing === "environment") {
+    return pickRearCameraDeviceId(devices) ?? devices[0]?.deviceId ?? null;
+  }
+  return pickFrontCameraDeviceId(devices);
+};
+
+const getCameraOptionsForFacing = async (facing: CameraFacing): Promise<CameraStreamOptions> => {
+  const deviceId = cameraDeviceId.value ?? (await resolveCameraDeviceId(facing));
+  if (deviceId) {
+    return { deviceId, facing, widthIdeal: 1280, heightIdeal: 720 };
+  }
+  return { facing, widthIdeal: 1280, heightIdeal: 720 };
+};
+
+const attachPreviewStream = (stream: MediaStream) => {
+  previewStream.value = stream;
+  if (previewVideoRef.value) {
+    previewVideoRef.value.srcObject = stream;
+  }
+};
+
+const startPreviewStream = async (facing: CameraFacing) => {
+  stopPreviewStream();
+  const options = await getCameraOptionsForFacing(facing);
+  const stream = await getCameraStream({ ...options, audio: false });
+  attachPreviewStream(stream);
+};
+
+const refreshPublishVideoTrack = () => {
+  const sender = publishHandle.value?.senders.find((item) => item.track?.kind === "video");
+  currentPublishVideoTrack.value = sender?.track ?? null;
+};
+
+const restartPublishSession = async (options: CameraStreamOptions) => {
+  if (!whipUrlCache.value) {
+    throw new Error("whip-url-missing");
+  }
+  if (!publishHandle.value) {
+    throw new Error("publish-handle-missing");
+  }
+  await publishHandle.value.stop().catch(() => {});
+  publishHandle.value = await startWhipPublish(whipUrlCache.value, {
+    mode: publishMode.value,
+    camera: { ...options, audio: true },
+    onDisplayEnded: () => {
+      if (publishHandle.value != null) {
+        void stopPublishSafely("display-ended", { uiPolicy: "silent" });
+      }
+    },
+  });
+  refreshPublishVideoTrack();
+};
+
+const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
+  if (!publishHandle.value) return;
+  const sender = publishHandle.value.senders.find((item) => item.track?.kind === "video");
+  if (!sender) {
+    throw new Error("video-sender-missing");
+  }
+
+  const stream = await getCameraStream({ ...options, audio: false });
+  const nextTrack = stream.getVideoTracks()[0];
+  if (!nextTrack) {
+    stopStreamTracks(stream);
+    throw new Error("video-track-missing");
+  }
+
+  try {
+    await sender.replaceTrack(nextTrack);
+  } catch (e) {
+    stopStreamTracks(stream);
+    throw e;
+  }
+
+  if (currentPublishVideoTrack.value && currentPublishVideoTrack.value !== nextTrack) {
+    try {
+      currentPublishVideoTrack.value.stop();
+    } catch {
+      // ignore
+    }
+  }
+  currentPublishVideoTrack.value = nextTrack;
+  for (const track of stream.getTracks()) {
+    if (track !== nextTrack) {
+      try {
+        track.stop();
+      } catch {
+        // ignore
+      }
+    }
+  }
 };
 
 const handleLiveRoomsChanged = (p: LiveRoomsChangedPayload) => {
@@ -456,6 +635,7 @@ const stopPublishSafely = async (reason: string, opts: StopPublishOpts = {}): Pr
         await handle.stop();
       } catch {}
     }
+    currentPublishVideoTrack.value = null;
 
     // 2) サーバ停止通知（ここだけが stopLive の唯一の呼び出し箇所）
     if (ctx) {
@@ -535,9 +715,20 @@ const onClickStartPublish = async () => {
     const config = await fetchWebrtcConfig(rid, tok);
     ensureNotAborted();
     if (!config.whipUrl) throw new Error("whip-url-missing");
+    whipUrlCache.value = config.whipUrl;
+
+    let cameraOptions: CameraStreamOptions | undefined;
+    if (publishMode.value === "camera") {
+      const facing = preferRearOnStart.value ? "environment" : cameraFacing.value;
+      cameraOptions = await getCameraOptionsForFacing(facing);
+      cameraDeviceId.value = cameraOptions.deviceId ?? null;
+      cameraFacing.value = facing;
+      stopPreviewStream();
+    }
 
     tmpHandle = await startWhipPublish(config.whipUrl, {
       mode: publishMode.value,
+      camera: cameraOptions,
       onDisplayEnded: () => {
         if (publishHandle.value != null) {
           void stopPublishSafely("display-ended", { uiPolicy: "silent" });
@@ -550,6 +741,7 @@ const onClickStartPublish = async () => {
     ensureNotAborted();
 
     publishHandle.value = tmpHandle;
+    refreshPublishVideoTrack();
     tmpHandle = null;
 
     if (cancelledPublishAttempts.has(attemptId)) {
@@ -637,6 +829,10 @@ const onClickStartPublishCatch = async (
         errorMessage.value = "マイクやカメラへのアクセスがブラウザに拒否されています。";
       } else if (e.code === "no-device") {
         errorMessage.value = "利用可能なマイク／カメラが見つかりません。";
+      } else if (e.code === "constraint-failed") {
+        errorMessage.value = "選択したカメラに対応していません。別のカメラをお試しください。";
+      } else if (e.code === "not-supported") {
+        errorMessage.value = "この端末/ブラウザではカメラ取得に未対応です。";
       } else {
         errorMessage.value = "マイク／カメラの取得に失敗しました。";
       }
@@ -662,6 +858,73 @@ const onClickStopPublish = async () => {
   if (!canStopPublish.value) return;
 
   await stopPublishSafely("manual");
+};
+
+const onClickStartPreview = async () => {
+  clearPublishUiErrors();
+  try {
+    const options = await getCameraOptionsForFacing(cameraFacing.value);
+    cameraDeviceId.value = options.deviceId ?? null;
+    await startPreviewStream(cameraFacing.value);
+  } catch (e) {
+    if (e instanceof MediaAcquireError) {
+      if (e.code === "permission-denied") {
+        errorMessage.value = "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。";
+      } else if (e.code === "no-device") {
+        errorMessage.value = "利用可能なカメラが見つかりません。";
+      } else if (e.code === "constraint-failed") {
+        errorMessage.value = "選択したカメラに対応していません。別のカメラをお試しください。";
+      } else if (e.code === "not-supported") {
+        errorMessage.value = "この端末/ブラウザではカメラ取得に未対応です。";
+      } else {
+        errorMessage.value = "カメラの取得に失敗しました。";
+      }
+    } else {
+      errorMessage.value = "カメラの取得に失敗しました。";
+    }
+  }
+};
+
+const onClickToggleCamera = async () => {
+  clearPublishUiErrors();
+  const nextFacing: CameraFacing = cameraFacing.value === "user" ? "environment" : "user";
+  isSwitchingCamera.value = true;
+  try {
+    const options = await getCameraOptionsForFacing(nextFacing);
+    cameraDeviceId.value = options.deviceId ?? null;
+    cameraFacing.value = nextFacing;
+
+    if (!isLive.value) {
+      await startPreviewStream(nextFacing);
+    }
+
+    if (publishHandle.value && publishMode.value === "camera") {
+      try {
+        await replacePublishVideoTrack({ ...options, facing: nextFacing });
+      } catch (e) {
+        console.warn("replaceTrack failed, restarting publish session", e);
+        await restartPublishSession({ ...options, facing: nextFacing });
+      }
+    }
+  } catch (e) {
+    if (e instanceof MediaAcquireError) {
+      if (e.code === "permission-denied") {
+        appendErrorMessage("カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。");
+      } else if (e.code === "no-device") {
+        appendErrorMessage("利用可能なカメラが見つかりません。");
+      } else if (e.code === "constraint-failed") {
+        appendErrorMessage("選択したカメラに対応していません。別のカメラをお試しください。");
+      } else if (e.code === "not-supported") {
+        appendErrorMessage("この端末/ブラウザではカメラ切替に未対応です。");
+      } else {
+        appendErrorMessage("カメラの切替に失敗しました。");
+      }
+    } else {
+      appendErrorMessage("カメラの切替に失敗しました。");
+    }
+  } finally {
+    isSwitchingCamera.value = false;
+  }
 };
 
 const onClickStartWatch = async () => {
@@ -842,6 +1105,16 @@ watch(isAudioOnlyLive, (val) => {
 });
 
 watch(
+  publishMode,
+  (mode) => {
+    if (mode !== "camera") {
+      stopPreviewStream();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
   () => liveEnabled.value,
   (enabled) => {
     if (!enabled) return;
@@ -885,6 +1158,8 @@ onBeforeUnmount(() => {
   if (activePublishCtx.value || publishHandle.value || lastPublishCtx.value) {
     void stopPublishSafely("unmount");
   }
+
+  stopPreviewStream();
 
   if (subscribeHandle.value) {
     subscribeHandle.value.stop().catch(() => {});
@@ -944,6 +1219,41 @@ onBeforeUnmount(() => {
 .buttons :deep(.p-button) {
   padding: 8px 10px;
   font-size: 13px;
+}
+
+.camera-controls {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.camera-controls__preview {
+  display: grid;
+  gap: 6px;
+}
+
+.camera-controls__video {
+  width: 100%;
+  max-height: 200px;
+  background: #111;
+  border-radius: 10px;
+}
+
+.camera-controls__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.camera-controls__option {
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.camera-controls__hint {
+  margin: 0;
 }
 
 .error {
