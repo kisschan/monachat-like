@@ -71,15 +71,46 @@ const stopStream = (s: MediaStream): void => {
   }
 };
 
-const stopTracks = (tracks: Array<MediaStreamTrack | null | undefined>): void => {
-  for (const track of tracks) {
-    if (track == null) continue;
-    try {
-      track.stop();
-    } catch {
-      // ignore
+type TrackRegistry = {
+  registerTrack: (track: MediaStreamTrack | null | undefined) => void;
+  registerStream: (stream: MediaStream | null | undefined) => void;
+  stopAll: () => void;
+};
+
+const createTrackRegistry = (): TrackRegistry => {
+  const tracks = new Set<MediaStreamTrack>();
+
+  const registerTrack = (track: MediaStreamTrack | null | undefined): void => {
+    if (track == null) return;
+    tracks.add(track);
+  };
+
+  const registerStream = (stream: MediaStream | null | undefined): void => {
+    if (stream == null) return;
+    for (const track of stream.getTracks()) registerTrack(track);
+  };
+
+  const stopAll = (): void => {
+    for (const track of tracks) {
+      try {
+        track.stop();
+      } catch {
+        // ignore
+      }
     }
-  }
+  };
+
+  return { registerTrack, registerStream, stopAll };
+};
+
+const wrapSenderReplaceTrack = (sender: RTCRtpSender, registry: TrackRegistry): void => {
+  const originalReplaceTrack = sender.replaceTrack?.bind(sender);
+  if (originalReplaceTrack == null) return;
+
+  sender.replaceTrack = async (track: MediaStreamTrack | null): Promise<void> => {
+    registry.registerTrack(track);
+    await originalReplaceTrack(track);
+  };
 };
 
 async function getStreamForMode(
@@ -148,12 +179,14 @@ export async function startWhipPublish(
   let displayTrackEndedHandler: (() => void) | null = null;
   let displayTrack: MediaStreamTrack | undefined;
   const senders: RTCRtpSender[] = [];
+  const trackRegistry = createTrackRegistry();
 
   try {
     const streamResult = await getStreamForMode(mode, options.camera);
     composedStream = streamResult.composed;
     sourceStreams = streamResult.sources;
     displayTrack = streamResult.displayVideoTrack;
+    for (const source of sourceStreams) trackRegistry.registerStream(source);
 
     //  listener はここでOK（strict-boolean対応）
     if (displayTrack !== undefined && options.onDisplayEnded != null) {
@@ -175,6 +208,8 @@ export async function startWhipPublish(
     for (const track of composedStream.getTracks()) {
       const sender = pc.addTrack(track, composedStream);
       senders.push(sender);
+      trackRegistry.registerTrack(track);
+      wrapSenderReplaceTrack(sender, trackRegistry);
     }
 
     const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
@@ -223,9 +258,7 @@ export async function startWhipPublish(
         }
       } finally {
         try {
-          const senderTracks = pc?.getSenders().map((sender) => sender.track) ?? [];
-          stopTracks(senderTracks);
-          for (const s of sourceStreams) stopStream(s);
+          trackRegistry.stopAll();
         } finally {
           pc?.close();
         }
@@ -243,9 +276,7 @@ export async function startWhipPublish(
       await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
     }
     try {
-      const senderTracks = pc?.getSenders().map((sender) => sender.track) ?? [];
-      stopTracks(senderTracks);
-      for (const s of sourceStreams) stopStream(s);
+      trackRegistry.stopAll();
     } finally {
       pc?.close();
     }
