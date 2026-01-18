@@ -38,10 +38,17 @@ jobs:
       - name: lint frontend
         run: yarn lint
         working-directory: ./frontend
-      - name: test frontend
+      - name: test frontend (browser, coverage off)
+        run: yarn test:browser
+        working-directory: ./frontend
+
+      - name: test frontend (coverage, no browser)
         run: yarn test:coverage
         working-directory: ./frontend
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
+
