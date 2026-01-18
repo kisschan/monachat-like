@@ -18,10 +18,12 @@ export const pickNextCameraDeviceId = (
     return { ok: false, deviceId: null, reason: "insufficient-devices" };
   }
 
-  const currentIndex = currentDeviceId
-    ? videoInputs.findIndex((device) => device.deviceId === currentDeviceId)
-    : -1;
+  const currentIndex =
+    currentDeviceId != null
+      ? videoInputs.findIndex((device) => device.deviceId === currentDeviceId)
+      : -1;
   const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % videoInputs.length : 0;
+  const nextDevice = videoInputs[nextIndex];
 
-  return { ok: true, deviceId: videoInputs[nextIndex].deviceId, reason: "round-robin" };
+  return { ok: true, deviceId: nextDevice?.deviceId ?? null, reason: "round-robin" };
 };
