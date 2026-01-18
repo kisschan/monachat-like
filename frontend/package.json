@@ -12,7 +12,7 @@
     "build-storybook": "sb build",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "test:browser": "vitest run --browser=chromium  --coverage.enabled=false",
+    "test:browser": "vitest run --browser=chromium --coverage.enabled=false",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8"
   },
   "devDependencies": {
@@ -32,7 +32,6 @@
     "@types/node": "^20.14.11",
     "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-vue": "^5.0.5",
-    "@vitest/browser": "^2.0.4",
     "@vitest/coverage-istanbul": "^2.0.4",
     "@vue/test-utils": "^2.4.6",
     "axios": "^1.5.0",
