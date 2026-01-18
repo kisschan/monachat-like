@@ -89,7 +89,7 @@ describe("LiveArea", () => {
     await (wrapper.vm as any).onClickStartPreview();
 
     expect(track.stop).not.toHaveBeenCalled();
-    expect((wrapper.vm as any).previewStream).toBe(stream);
+    expect((wrapper.vm as any).previewStream).toStrictEqual(stream);
     expect(previewVideoRef.srcObject).toBe(stream);
     expect((wrapper.vm as any).cameraDeviceId).toBeNull();
     expect((wrapper.vm as any).cameraDeviceIdFacing).toBeNull();
@@ -122,7 +122,7 @@ describe("LiveArea", () => {
     expect((wrapper.vm as any).cameraFacing).toBe("user");
     expect((wrapper.vm as any).cameraDeviceId).toBe("front");
     expect((wrapper.vm as any).cameraDeviceIdFacing).toBe("user");
-    expect((wrapper.vm as any).previewStream).toBe(stream);
+    expect((wrapper.vm as any).previewStream).toStrictEqual(stream);
   });
 
   it("uses restartPublishSessionSafely when replaceTrack fails during publish", async () => {

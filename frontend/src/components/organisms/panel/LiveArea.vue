@@ -461,19 +461,6 @@ const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
   currentPublishVideoTrack.value = nextTrack;
 };
 
-const updatePublishCameraTrackSafely = async (
-  options: CameraStreamOptions,
-  nextFacing: CameraFacing,
-) => {
-  if (!publishHandle.value || publishMode.value !== "camera") return;
-  try {
-    await replacePublishVideoTrack({ ...options, facing: nextFacing });
-  } catch (e) {
-    logErrorSafe("replaceTrack failed, restarting publish session", e);
-    await restartPublishSessionSafely({ ...options, facing: nextFacing });
-  }
-};
-
 const handleLiveRoomsChanged = (p: LiveRoomsChangedPayload) => {
   liveRoomsStore.applyLiveRoomsChanged(p);
 };
