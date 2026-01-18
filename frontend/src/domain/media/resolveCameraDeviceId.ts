@@ -30,7 +30,7 @@ export const resolveCameraDeviceId = (
     return { ok: true, deviceId: null, reason: "no-videoinput" };
   }
 
-  if (preferredDeviceId) {
+  if (preferredDeviceId != null) {
     const preferred = videoInputs.find((device) => device.deviceId === preferredDeviceId);
     if (preferred) {
       return { ok: true, deviceId: preferred.deviceId, reason: "preferred-device-id" };

@@ -6,7 +6,7 @@ export const buildVideoConstraints = (
   resolvedDeviceId: string | null,
   facingMode: CameraFacing | null,
 ): VideoConstraints => {
-  if (resolvedDeviceId) {
+  if (resolvedDeviceId != null) {
     return { deviceId: { exact: resolvedDeviceId } };
   }
   if (facingMode) {
