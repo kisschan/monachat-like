@@ -404,10 +404,9 @@ const attachPreviewStream = (stream: MediaStream) => {
   }
 };
 
-const startPreviewStream = async (facing: CameraFacing) => {
-  stopPreviewStream();
-  const options = await getCameraOptionsForFacing(facing);
+const startPreviewStream = async (options: CameraStreamOptions) => {
   const stream = await getCameraStream({ ...options, audio: false });
+  stopPreviewStream();
   attachPreviewStream(stream);
 };
 
@@ -911,9 +910,9 @@ const onClickStartPreview = async () => {
   clearPublishUiErrors();
   try {
     const options = await getCameraOptionsForFacing(cameraFacing.value);
+    await startPreviewStream(options);
     cameraDeviceId.value = options.deviceId ?? null;
     cameraDeviceIdFacing.value = cameraFacing.value;
-    await startPreviewStream(cameraFacing.value); // 後述: options渡す形にしてもよい
   } catch (e) {
     if (e instanceof MediaAcquireError) {
       if (e.code === "permission-denied") {
@@ -968,7 +967,7 @@ const onClickToggleCamera = async () => {
         await replacePublishVideoTrack({ ...options, facing: nextFacing });
       } catch (e) {
         console.warn("replaceTrack failed, restarting publish session", e);
-        await restartPublishSession({ ...options, facing: nextFacing });
+        await restartPublishSessionSafely({ ...options, facing: nextFacing });
       }
 
       // 成功時のみ state をコミット
