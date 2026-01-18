@@ -13,9 +13,10 @@ export const restartPublishSessionSafely = async ({
   stopPublishSafely,
   onRestartError,
   onUiError,
-}: RestartPublishSessionSafelyDeps): Promise<void> => {
+}: RestartPublishSessionSafelyDeps): Promise<boolean> => {
   try {
     await restartPublishSession();
+    return true;
   } catch (e) {
     onRestartError?.(e);
     onUiError?.();
@@ -23,5 +24,6 @@ export const restartPublishSessionSafely = async ({
       uiPolicy: "user-action",
       preserveUiErrors: true,
     });
+    return false;
   }
 };

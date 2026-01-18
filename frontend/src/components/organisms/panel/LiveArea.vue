@@ -186,13 +186,14 @@ import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
   getCameraStream,
   listVideoInputs,
-  pickRearCameraDeviceId,
   type CameraFacing,
   type CameraStreamOptions,
 } from "@/webrtc/cameraManager";
-import { replaceVideoTrackSafely } from "@/webrtc/cameraSwitch";
 import { MediaAcquireError } from "@/webrtc/mediaErrors";
 import { restartPublishSessionSafely as restartPublishSessionSafelyHelper } from "@/webrtc/publishRestart";
+import { pickNextCameraDeviceId } from "@/domain/media/pickNextCameraDeviceId";
+import { resolveCameraDeviceId } from "@/domain/media/resolveCameraDeviceId";
+import { switchPublishCameraSafely } from "@/services/live/switchPublishCameraSafely";
 import {
   LiveRoomsChangedPayload,
   socketIOInstance,
@@ -351,48 +352,59 @@ const stopPreviewStream = () => {
   }
 };
 
+const stopTrackSafe = (track: MediaStreamTrack) => {
+  try {
+    track.stop();
+  } catch {
+    // ignore
+  }
+};
+
+const getUserMediaRaw = async (constraints: MediaStreamConstraints): Promise<MediaStream> => {
+  const mediaDevices = navigator.mediaDevices;
+  if (!mediaDevices) {
+    const error = new Error("mediaDevices is not available") as Error & { name: string };
+    error.name = "NotSupportedError";
+    throw error;
+  }
+  return await mediaDevices.getUserMedia(constraints);
+};
+
 const loadCameraDevices = async (): Promise<MediaDeviceInfo[]> => {
   const devices = await listVideoInputs();
   cameraDevices.value = devices;
   return devices;
 };
 
-const pickFrontCameraDeviceId = (devices: MediaDeviceInfo[]): string | null => {
-  const frontPattern = /(front|user|selfie|前面|内側|内カメ)/i;
-  const matched = devices.find((device) => frontPattern.test(device.label));
-  return matched?.deviceId ?? devices[0]?.deviceId ?? null;
-};
-
-const resolveCameraDeviceId = async (facing: CameraFacing): Promise<string | null> => {
+const resolveCameraDeviceIdForFacing = async (
+  facing: CameraFacing,
+): Promise<{ deviceId: string | null; reason: string }> => {
   const devices = await loadCameraDevices().catch(() => cameraDevices.value);
-  if (devices.length === 0) return null;
-  const hasLabeledDevice = devices.some((device) => device.label.trim() !== "");
-  if (!hasLabeledDevice) {
-    if (!isProd) {
-      console.debug("resolveCameraDeviceId: device labels unavailable; fallback to facingMode", {
-        facing,
-        count: devices.length,
-      });
-    }
-    return null;
+  const resolved = resolveCameraDeviceId(devices, null, facing);
+  if (!isProd) {
+    console.debug("resolveCameraDeviceIdForFacing:", {
+      facing,
+      deviceId: resolved.deviceId,
+      reason: resolved.reason,
+    });
   }
-  if (facing === "environment") {
-    return pickRearCameraDeviceId(devices) ?? devices[0]?.deviceId ?? null;
-  }
-  return pickFrontCameraDeviceId(devices);
+  return { deviceId: resolved.deviceId, reason: resolved.reason };
 };
 
 const getCameraOptionsForFacing = async (facing: CameraFacing): Promise<CameraStreamOptions> => {
   const canReuse = cameraDeviceId.value != null && cameraDeviceIdFacing.value === facing;
-  const deviceId = canReuse ? cameraDeviceId.value : await resolveCameraDeviceId(facing);
+  const resolved = canReuse
+    ? { deviceId: cameraDeviceId.value, reason: "reuse" }
+    : await resolveCameraDeviceIdForFacing(facing);
   if (!isProd) {
     console.debug("getCameraOptionsForFacing:", {
       facing,
-      hasDeviceId: deviceId != null,
+      hasDeviceId: resolved.deviceId != null,
+      reason: resolved.reason,
     });
   }
-  if (deviceId) {
-    return { deviceId, facing, widthIdeal: 1280, heightIdeal: 720 };
+  if (resolved.deviceId) {
+    return { deviceId: resolved.deviceId, facing, widthIdeal: 1280, heightIdeal: 720 };
   }
   return { facing, widthIdeal: 1280, heightIdeal: 720 };
 };
@@ -415,6 +427,22 @@ const refreshPublishVideoTrack = () => {
   currentPublishVideoTrack.value = sender?.track ?? null;
 };
 
+const resolveSwitchErrorMessage = (errorName?: string): string => {
+  if (errorName === "NotAllowedError" || errorName === "SecurityError") {
+    return "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。";
+  }
+  if (errorName === "NotFoundError") {
+    return "利用可能なカメラが見つかりません。";
+  }
+  if (errorName === "OverconstrainedError") {
+    return "選択したカメラに対応していません。別のカメラをお試しください。";
+  }
+  if (errorName === "NotSupportedError") {
+    return "この端末/ブラウザではカメラ切替に未対応です。";
+  }
+  return "カメラの切替に失敗しました。";
+};
+
 const restartPublishSession = async (options: CameraStreamOptions) => {
   if (!whipUrlCache.value) {
     throw new Error("whip-url-missing");
@@ -435,8 +463,8 @@ const restartPublishSession = async (options: CameraStreamOptions) => {
   refreshPublishVideoTrack();
 };
 
-const restartPublishSessionSafely = async (options: CameraStreamOptions) => {
-  await restartPublishSessionSafelyHelper({
+const restartPublishSessionSafely = async (options: CameraStreamOptions): Promise<boolean> => {
+  return await restartPublishSessionSafelyHelper({
     restartPublishSession: () => restartPublishSession(options),
     stopPublishSafely,
     onRestartError: (e) => logErrorSafe("restartPublishSession failed", e),
@@ -446,18 +474,13 @@ const restartPublishSessionSafely = async (options: CameraStreamOptions) => {
   });
 };
 
-const replacePublishVideoTrack = async (options: CameraStreamOptions) => {
+const replacePublishVideoTrack = async (nextTrack: MediaStreamTrack) => {
   if (!publishHandle.value) return;
   const sender = publishHandle.value.senders.find((item) => item.track?.kind === "video");
   if (!sender) {
     throw new Error("video-sender-missing");
   }
-  const nextTrack = await replaceVideoTrackSafely({
-    sender,
-    currentTrack: currentPublishVideoTrack.value,
-    getCameraStream,
-    options,
-  });
+  await sender.replaceTrack(nextTrack);
   currentPublishVideoTrack.value = nextTrack;
 };
 
@@ -930,41 +953,61 @@ const onClickToggleCamera = async () => {
   isSwitchingCamera.value = true;
 
   try {
-    // 1) まず nextFacing の options を作る（ここでは state を更新しない）
-    const options = await getCameraOptionsForFacing(nextFacing);
+    const devices = await loadCameraDevices().catch(() => cameraDevices.value);
 
     if (!publishHandle.value) {
-      // ===== プレビュー切替：成功してから差し替える（失敗したら現状維持） =====
-      const nextStream = await getCameraStream({ ...options, audio: false });
+      const pickNext = pickNextCameraDeviceId(devices, cameraDeviceId.value);
+      const resolved = pickNext.ok
+        ? { deviceId: pickNext.deviceId, reason: pickNext.reason }
+        : resolveCameraDeviceId(devices, null, nextFacing);
+      const options: CameraStreamOptions = {
+        deviceId: resolved.deviceId ?? undefined,
+        facing: resolved.deviceId ? undefined : nextFacing,
+        widthIdeal: 1280,
+        heightIdeal: 720,
+      };
 
-      // ここまで来たら成功なので差し替え
+      const nextStream = await getCameraStream({ ...options, audio: false });
       stopPreviewStream();
       attachPreviewStream(nextStream);
 
-      // 成功時のみ state をコミット
       cameraFacing.value = nextFacing;
-      cameraDeviceId.value = options.deviceId ?? null;
+      cameraDeviceId.value = resolved.deviceId ?? null;
       cameraDeviceIdFacing.value = nextFacing;
       return;
     }
 
     if (publishHandle.value && publishMode.value === "camera") {
-      // ===== 配信中の切替：replaceTrack → 失敗なら restart。成功後だけ state をコミット =====
-      try {
-        await replacePublishVideoTrack({ ...options, facing: nextFacing });
-      } catch (e) {
-        console.warn("replaceTrack failed, restarting publish session", e);
-        await restartPublishSessionSafely({ ...options, facing: nextFacing });
+      const result = await switchPublishCameraSafely(
+        {
+          currentTrack: currentPublishVideoTrack.value,
+          devices,
+          currentFacingMode: prevFacing,
+          currentDeviceId: cameraDeviceId.value,
+        },
+        {
+          getUserMedia: getUserMediaRaw,
+          replacePublishVideoTrack: async (track) => replacePublishVideoTrack(track),
+          restartPublishSessionSafely: async (options) =>
+            restartPublishSessionSafely({
+              ...options,
+              widthIdeal: 1280,
+              heightIdeal: 720,
+            }),
+          stopTrack: stopTrackSafe,
+        },
+      );
+
+      if (!result.ok) {
+        appendErrorMessage(resolveSwitchErrorMessage(result.errorName));
+        return;
       }
 
-      // 成功時のみ state をコミット
-      cameraFacing.value = nextFacing;
-      cameraDeviceId.value = options.deviceId ?? null;
-      cameraDeviceIdFacing.value = nextFacing;
+      cameraFacing.value = result.nextFacingMode;
+      cameraDeviceId.value = result.nextDeviceId ?? null;
+      cameraDeviceIdFacing.value = result.nextFacingMode;
     }
   } catch (e) {
-    // 失敗時：state は触らない（prevFacingのまま）
-    // 表示と実体の乖離を起こさないために「戻す」処理は不要（そもそも進めてない）
     if (e instanceof MediaAcquireError) {
       if (e.code === "permission-denied") {
         appendErrorMessage(
