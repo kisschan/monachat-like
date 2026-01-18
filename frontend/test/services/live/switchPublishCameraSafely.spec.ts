@@ -29,7 +29,10 @@ describe("switchPublishCameraSafely", () => {
     const currentTrack = new FakeTrack();
     const nextTrack = new FakeTrack();
     const audioTrack = new FakeAudioTrack();
-    const stream = createStream([nextTrack as MediaStreamTrack, audioTrack as MediaStreamTrack]);
+    const stream = createStream([
+      nextTrack as unknown as MediaStreamTrack,
+      audioTrack as unknown as MediaStreamTrack,
+    ]);
 
     const getUserMedia = vi.fn().mockResolvedValue(stream);
     const replacePublishVideoTrack = vi.fn().mockResolvedValue(undefined);
@@ -62,13 +65,10 @@ describe("switchPublishCameraSafely", () => {
     expect.assertions(4);
     const currentTrack = new FakeTrack();
     const nextTrack = new FakeTrack();
-    const stream = createStream([nextTrack as MediaStreamTrack]);
+    const stream = createStream([nextTrack as unknown as MediaStreamTrack]);
     const notReadable = Object.assign(new Error("busy"), { name: "NotReadableError" });
 
-    const getUserMedia = vi
-      .fn()
-      .mockRejectedValueOnce(notReadable)
-      .mockResolvedValueOnce(stream);
+    const getUserMedia = vi.fn().mockRejectedValueOnce(notReadable).mockResolvedValueOnce(stream);
     const replacePublishVideoTrack = vi.fn().mockResolvedValue(undefined);
     const restartPublishSessionSafely = vi.fn().mockResolvedValue(true);
     const stopTrack = vi.fn();
@@ -129,7 +129,7 @@ describe("switchPublishCameraSafely", () => {
     expect.assertions(5);
     const currentTrack = new FakeTrack();
     const nextTrack = new FakeTrack();
-    const stream = createStream([nextTrack as MediaStreamTrack]);
+    const stream = createStream([nextTrack as unknown as MediaStreamTrack]);
 
     const getUserMedia = vi.fn().mockResolvedValue(stream);
     const replacePublishVideoTrack = vi.fn().mockRejectedValue(new Error("replace"));
@@ -152,7 +152,7 @@ describe("switchPublishCameraSafely", () => {
     );
 
     expect(result.ok).toBe(false);
-    expect(restartPublishSessionSafely).toHaveBeenCalled();
+    expect(restartPublishSessionSafely).toHaveBeenCalledTimes(1);
     expect(stopTrack).toHaveBeenCalledWith(nextTrack);
     expect(stopTrack).not.toHaveBeenCalledWith(currentTrack);
     expect("nextFacingMode" in result).toBe(false);
@@ -193,7 +193,7 @@ describe("switchPublishCameraSafely", () => {
     expect.assertions(2);
     const currentTrack = new FakeTrack();
     const nextTrack = new FakeTrack();
-    const stream = createStream([nextTrack as MediaStreamTrack]);
+    const stream = createStream([nextTrack as unknown as MediaStreamTrack]);
 
     const getUserMedia = vi.fn().mockResolvedValue(stream);
     const replacePublishVideoTrack = vi.fn().mockResolvedValue(undefined);

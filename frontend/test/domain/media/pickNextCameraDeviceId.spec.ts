@@ -15,8 +15,8 @@ describe("pickNextCameraDeviceId", () => {
     const nextFromA = pickNextCameraDeviceId(devices, "a");
     const nextFromC = pickNextCameraDeviceId(devices, "c");
 
-    expect(nextFromA).toEqual({ ok: true, deviceId: "b", reason: "round-robin" });
-    expect(nextFromC).toEqual({ ok: true, deviceId: "a", reason: "round-robin" });
+    expect(nextFromA).toStrictEqual({ ok: true, deviceId: "b", reason: "round-robin" });
+    expect(nextFromC).toStrictEqual({ ok: true, deviceId: "a", reason: "round-robin" });
   });
 
   it("falls back to the first device when current is missing", () => {
@@ -25,7 +25,7 @@ describe("pickNextCameraDeviceId", () => {
 
     const result = pickNextCameraDeviceId(devices, "missing");
 
-    expect(result).toEqual({ ok: true, deviceId: "a", reason: "round-robin" });
+    expect(result).toStrictEqual({ ok: true, deviceId: "a", reason: "round-robin" });
   });
 
   it("returns ok=false when fewer than two devices exist", () => {
@@ -34,6 +34,6 @@ describe("pickNextCameraDeviceId", () => {
 
     const result = pickNextCameraDeviceId(devices, "a");
 
-    expect(result).toEqual({ ok: false, deviceId: null, reason: "insufficient-devices" });
+    expect(result).toStrictEqual({ ok: false, deviceId: null, reason: "insufficient-devices" });
   });
 });

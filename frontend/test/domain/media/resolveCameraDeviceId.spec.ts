@@ -15,8 +15,8 @@ describe("resolveCameraDeviceId", () => {
     const userResult = resolveCameraDeviceId(devices, undefined, "user");
     const envResult = resolveCameraDeviceId(devices, undefined, "environment");
 
-    expect(userResult).toEqual({ ok: true, deviceId: null, reason: "label-no-match" });
-    expect(envResult).toEqual({ ok: true, deviceId: null, reason: "label-no-match" });
+    expect(userResult).toStrictEqual({ ok: true, deviceId: null, reason: "label-no-match" });
+    expect(envResult).toStrictEqual({ ok: true, deviceId: null, reason: "label-no-match" });
   });
 
   it("uses facing keywords to pick front/back devices", () => {
@@ -26,8 +26,8 @@ describe("resolveCameraDeviceId", () => {
     const userResult = resolveCameraDeviceId(devices, undefined, "user");
     const envResult = resolveCameraDeviceId(devices, undefined, "environment");
 
-    expect(userResult).toEqual({ ok: true, deviceId: "front-id", reason: "label-match" });
-    expect(envResult).toEqual({ ok: true, deviceId: "back-id", reason: "label-match" });
+    expect(userResult).toStrictEqual({ ok: true, deviceId: "front-id", reason: "label-match" });
+    expect(envResult).toStrictEqual({ ok: true, deviceId: "back-id", reason: "label-match" });
   });
 
   it("prefers the preferredDeviceId when available", () => {
@@ -36,6 +36,6 @@ describe("resolveCameraDeviceId", () => {
 
     const result = resolveCameraDeviceId(devices, "back-id", "user");
 
-    expect(result).toEqual({ ok: true, deviceId: "back-id", reason: "preferred-device-id" });
+    expect(result).toStrictEqual({ ok: true, deviceId: "back-id", reason: "preferred-device-id" });
   });
 });
