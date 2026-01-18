@@ -28,11 +28,8 @@ export default defineConfig(({}) => {
     },
 
     test: {
-      browser: {
-        provider: "playwright",
-        name: "chromium",
-        headless: true,
-      },
+      browser: { enabled: isBrowser },
+      ui: { enabled: isUI },
       coverage: enableCoverage ? { enabled: true, provider: "istanbul" } : { enabled: false },
 
       environment: "happy-dom",

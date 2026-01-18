@@ -12,13 +12,13 @@
     "build-storybook": "sb build",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "test:browser": "vitest run --browser=chromium --coverage.enabled=false",
+    "test:browser": "vitest run --coverage.enabled=false",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",
     "@pinia/testing": "^0.1.4",
-    "@playwright/test": "^1.45.3",
+    "@playwright/test": "^1.57.0",
     "@primevue/themes": "^4.0.2",
     "@storybook/addon-actions": "^8.2.6",
     "@storybook/addon-essentials": "^8.2.6",
@@ -32,6 +32,7 @@
     "@types/node": "^20.14.11",
     "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-vue": "^5.0.5",
+    "@vitest/browser": "2.0.4",
     "@vitest/coverage-istanbul": "^2.0.4",
     "@vue/test-utils": "^2.4.6",
     "axios": "^1.5.0",
