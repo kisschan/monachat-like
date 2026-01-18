@@ -25,7 +25,10 @@ export type SwitchPublishCameraSafelyResult =
 export type SwitchPublishCameraSafelyDeps = {
   getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
   replacePublishVideoTrack: (track: MediaStreamTrack) => Promise<void>;
-  restartPublishSessionSafely: (options: { deviceId?: string; facing?: CameraFacing }) => Promise<boolean>;
+  restartPublishSessionSafely: (options: {
+    deviceId?: string;
+    facing?: CameraFacing;
+  }) => Promise<boolean>;
   stopTrack: (track: MediaStreamTrack) => void;
 };
 
@@ -56,9 +59,15 @@ const stopStreamTracks = (
 };
 
 const getErrorName = (error: unknown): string | undefined => {
-  if (error && typeof error === "object" && "name" in error) {
-    return String((error as { name?: string }).name);
+  if (error === null || error === undefined) return undefined;
+
+  if (typeof error === "object" && "name" in error) {
+    const name = (error as { name?: unknown }).name;
+    if (typeof name === "string") return name;
+    if (name == null) return undefined;
+    return String(name);
   }
+
   return undefined;
 };
 
@@ -86,7 +95,7 @@ export const switchPublishCameraSafely = async (
 
   const videoConstraints = buildVideoConstraints(
     targetDeviceId,
-    targetDeviceId ? null : nextFacingMode,
+    targetDeviceId != null ? null : nextFacingMode,
   );
   const mediaConstraints: MediaStreamConstraints = {
     audio: false,
@@ -140,7 +149,7 @@ export const switchPublishCameraSafely = async (
   } catch (error) {
     const restartOk = await deps.restartPublishSessionSafely({
       deviceId: targetDeviceId ?? undefined,
-      facing: targetDeviceId ? undefined : nextFacingMode,
+      facing: targetDeviceId != null ? undefined : nextFacingMode,
     });
     stopStreamTracks(deps.stopTrack, stream);
 
