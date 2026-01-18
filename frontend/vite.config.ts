@@ -62,6 +62,7 @@ export default defineConfig(({ mode }) => {
           }
         : {
             enabled: false,
+            provider: "istanbul",
           },
       environment: "happy-dom",
       globals: true,
