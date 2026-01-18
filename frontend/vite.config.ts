@@ -55,11 +55,14 @@ export default defineConfig(({ mode }) => {
         },
 
     test: {
-      // ★重要：UI/browser 実行時は coverage を必ず無効化（例の fetch エラー回避）
-      coverage: {
-        enabled: enableCoverage,
-        provider: "istanbul",
-      },
+      coverage: enableCoverage
+        ? {
+            enabled: true,
+            provider: "istanbul",
+          }
+        : {
+            enabled: false,
+          },
       environment: "happy-dom",
       globals: true,
       include: ["test/**/*.spec.ts"],
