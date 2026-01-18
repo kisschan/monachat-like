@@ -68,6 +68,10 @@
     "vue-eslint-parser": "^9.4.3",
     "vue-router": "^4.2.5"
   },
+  "resolutions": {
+    "msw/type-fest": "2.19.0",
+    "vue-component-type-helpers": "2.0.26"
+  },
   "browserslist": [
     "> 1%",
     "last 2 versions",
