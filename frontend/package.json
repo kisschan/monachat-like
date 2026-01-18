@@ -13,7 +13,7 @@
     "test": "vitest",
     "test:e2e": "playwright test",
     "test:browser": "vitest run --coverage.enabled=false",
-    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8"
+    "test:coverage": "vitest run"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",
