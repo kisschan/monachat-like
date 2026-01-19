@@ -67,7 +67,7 @@
                 @click="onClickStartPreview"
               />
               <PrimeButton
-                :label="cameraFacing === 'user' ? '外カメラへ切替' : '内カメラへ切替'"
+                label="カメラ切替"
                 :disabled="isBusyPublish || isSwitchingCamera || isOtherLive"
                 @click="onClickToggleCamera"
               />
