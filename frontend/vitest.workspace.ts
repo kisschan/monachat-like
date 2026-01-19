@@ -13,7 +13,6 @@ export default defineWorkspace([
         enabled: true,
         name: "chromium",
         provider: "playwright",
-        // https://playwright.dev
         providerOptions: {},
       },
     },

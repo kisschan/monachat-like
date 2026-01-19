@@ -30,8 +30,7 @@ export default defineConfig(({}) => {
     test: {
       browser: { enabled: isBrowser, provider: "playwright" },
       ui: { enabled: isUI },
-      coverage: enableCoverage ? { enabled: true, provider: "istanbul" } : { enabled: false },
-
+      coverage: { enabled: enableCoverage, provider: "istanbul" },
       environment: "happy-dom",
       globals: true,
       include: ["test/**/*.spec.ts"],
