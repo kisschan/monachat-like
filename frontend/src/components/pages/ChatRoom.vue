@@ -342,10 +342,10 @@ const clickLogLines = () => {
   }
 };
 const toggleLiveWindow = () => {
-  isLiveVisible.value = !isLiveVisible.value;
+  uiStore.toggleLiveWindow();
 };
 const closeLiveWindow = () => {
-  isLiveVisible.value = false;
+  uiStore.toggleLiveWindow();
 };
 const click = ({ ihash }: { ihash: string }) => {
   if (settingStore.isClickToChangeColorEnabled) {

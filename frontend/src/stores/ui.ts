@@ -21,6 +21,18 @@ export const useUIStore = defineStore("ui", () => {
   const panelBackgroundColor = computed(() => (settingStore.isDarkMode ? "#121212" : "white"));
   const greyBackgroundColor = computed(() => (settingStore.isDarkMode ? "#3A3A3A" : "#dcdcdc"));
 
+  const openLiveWindow = () => {
+    isLiveVisible.value = true;
+  };
+
+  const closeLiveWindow = () => {
+    isLiveVisible.value = false;
+  };
+
+  const toggleLiveWindow = () => {
+    isLiveVisible.value = !isLiveVisible.value;
+  };
+
   return {
     width,
     height,
@@ -30,5 +42,8 @@ export const useUIStore = defineStore("ui", () => {
     backgroundColor,
     panelBackgroundColor,
     greyBackgroundColor,
+    openLiveWindow,
+    closeLiveWindow,
+    toggleLiveWindow,
   };
 });

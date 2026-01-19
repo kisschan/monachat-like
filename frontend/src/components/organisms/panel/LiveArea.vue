@@ -257,7 +257,6 @@ const myId = computed(() => userStore.myID);
 // =====================
 const liveRoomsStore = useLiveRoomsStore();
 const liveVideoStore = useLiveVideoStore();
-const { isLiveVisible } = storeToRefs(uiStore);
 const {
   visibleLiveRooms,
   hasLoadedOnce,
@@ -304,6 +303,8 @@ const abortInFlightPublishStart = () => {
 
 // 視聴者側
 const isBusyWatch = ref(false);
+const isStartingWatch = ref(false);
+const watchSubscribeInFlight = ref<Promise<WhepSubscribeHandle> | null>(null);
 const subscribeHandle = ref<WhepSubscribeHandle | null>(null);
 const { videoElement } = storeToRefs(liveVideoStore);
 const watchMode = ref<"av" | "audio">("av");
@@ -578,6 +579,7 @@ const canStartWatch = computed(() => {
   return (
     liveEnabled.value &&
     !isBusyWatch.value &&
+    !isStartingWatch.value &&
     isLive.value &&
     !!roomId.value &&
     !!token.value &&
@@ -1035,42 +1037,56 @@ const onClickToggleCamera = async () => {
 
 const onClickStartWatch = async () => {
   if (!roomId.value || !token.value) return;
+  if (isStartingWatch.value) return;
   if (!canStartWatch.value) return;
-  if (!videoElement.value) {
-    isLiveVisible.value = true;
-    await nextTick();
-  }
-  if (!videoElement.value) {
-    await new Promise<void>((resolve) => {
-      const stop = watch(
-        videoElement,
-        (element) => {
-          if (element) {
-            stop();
-            resolve();
-          }
-        },
-        { flush: "post" },
-      );
-    });
-  }
-  if (!videoElement.value) {
-    errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
-    return;
-  }
-
-  errorMessage.value = null;
-  isBusyWatch.value = true;
+  isStartingWatch.value = true;
+  let subscribePromise: Promise<WhepSubscribeHandle> | null = null;
 
   try {
+    if (!videoElement.value) {
+      uiStore.openLiveWindow();
+      await nextTick();
+    }
+    if (!videoElement.value) {
+      await new Promise<void>((resolve) => {
+        const stop = watch(
+          videoElement,
+          (element) => {
+            if (element) {
+              stop();
+              resolve();
+            }
+          },
+          { flush: "post" },
+        );
+      });
+    }
+    if (!videoElement.value) {
+      errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
+      return;
+    }
+    if (!canStartWatch.value || subscribeHandle.value || watchSubscribeInFlight.value) {
+      return;
+    }
+
+    errorMessage.value = null;
+    isBusyWatch.value = true;
+
     const config = await fetchWebrtcConfig(roomId.value, token.value);
     if (!config.whepUrl) {
       throw new Error("whep-url-missing");
     }
 
-    subscribeHandle.value = await startWhepSubscribe(config.whepUrl, videoElement.value, {
+    subscribePromise = startWhepSubscribe(config.whepUrl, videoElement.value, {
       audioOnly: isWatchAudioOnly.value,
     });
+    watchSubscribeInFlight.value = subscribePromise;
+    const handle = await subscribePromise;
+    if (subscribeHandle.value) {
+      await handle.stop().catch(() => {});
+    } else {
+      subscribeHandle.value = handle;
+    }
   } catch (e: unknown) {
     if (axios.isAxiosError(e)) {
       const status = e.response?.status;
@@ -1099,7 +1115,11 @@ const onClickStartWatch = async () => {
       errorMessage.value = "視聴開始に失敗しました。";
     }
   } finally {
+    if (watchSubscribeInFlight.value === subscribePromise) {
+      watchSubscribeInFlight.value = null;
+    }
     isBusyWatch.value = false;
+    isStartingWatch.value = false;
   }
 };
 
