@@ -28,7 +28,7 @@ export default defineConfig(({}) => {
     },
 
     test: {
-      browser: { enabled: isBrowser },
+      browser: { enabled: isBrowser, provider: "playwright" },
       ui: { enabled: isUI },
       coverage: enableCoverage ? { enabled: true, provider: "istanbul" } : { enabled: false },
 
