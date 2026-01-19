@@ -12,111 +12,164 @@
       <h3>配信者コントロール</h3>
 
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-      <!-- 配信モード（開始前に選択） -->
-      <div class="mode-switch">
-        <label>
-          <input
-            v-model="publishMode"
-            type="radio"
-            value="camera"
-            :disabled="isBusyPublish || isLive"
-          />
-          カメラ＋マイク
-        </label>
 
-        <label>
-          <input
-            v-model="publishMode"
-            type="radio"
-            value="screen"
-            :disabled="isBusyPublish || isLive"
-          />
-          画面＋画面音声
-        </label>
+      <div
+        class="live-controls-grid"
+        :class="{ 'live-controls-grid--with-preview': publishMode === 'camera' }"
+      >
+        <!-- 左：操作一式 -->
+        <div class="live-controls-grid__left">
+          <!-- 配信モード（開始前に選択） -->
+          <div class="mode-switch">
+            <label>
+              <input
+                v-model="publishMode"
+                type="radio"
+                value="camera"
+                :disabled="isBusyPublish || isLive"
+              />
+              カメラ＋マイク
+            </label>
 
-        <label>
-          <input
-            v-model="publishMode"
-            type="radio"
-            value="audio"
-            :disabled="isBusyPublish || isLive"
-          />
-          マイクのみ
-        </label>
+            <label>
+              <input
+                v-model="publishMode"
+                type="radio"
+                value="screen"
+                :disabled="isBusyPublish || isLive"
+              />
+              画面＋画面音声
+            </label>
+
+            <label>
+              <input
+                v-model="publishMode"
+                type="radio"
+                value="audio"
+                :disabled="isBusyPublish || isLive"
+              />
+              マイクのみ
+            </label>
+          </div>
+
+          <!-- screenの注意 -->
+          <p v-if="publishMode === 'screen'" class="hint">
+            画面音声は「共有対象」と「共有ダイアログの音声共有設定」に依存します。
+            音声が取得できない場合は配信開始できません。
+          </p>
+
+          <!-- camera のときだけ：プレビュー操作 -->
+          <div v-if="publishMode === 'camera'" class="camera-actions">
+            <div class="buttons">
+              <PrimeButton
+                :label="isPreviewing ? 'プレビュー更新' : 'プレビュー開始'"
+                :disabled="isBusyPublish || isLive || isSwitchingCamera"
+                @click="onClickStartPreview"
+              />
+              <PrimeButton
+                label="カメラ切替"
+                :disabled="isBusyPublish || isSwitchingCamera || isOtherLive"
+                @click="onClickToggleCamera"
+              />
+            </div>
+
+            <label class="camera-actions__option">
+              <input
+                v-model="preferRearOnStart"
+                type="checkbox"
+                :disabled="isBusyPublish || isLive"
+              />
+              開始時に外カメラを優先
+            </label>
+
+            <p class="camera-actions__hint hint">
+              カメラプレビュー（配信前）。切替後の確認に使えます。
+            </p>
+          </div>
+
+          <!-- screen音声が取れなかった時の専用表示 -->
+          <p v-if="screenAudioNotice" class="error">{{ screenAudioNotice }}</p>
+
+          <!-- 配信ボタン行 -->
+          <div class="buttons">
+            <PrimeButton
+              label="配信開始"
+              :disabled="!canStartPublish"
+              @click="onClickStartPublish"
+            />
+            <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
+          </div>
+          <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
+
+          <hr class="live-sep" />
+
+          <h3 class="subheading">視聴</h3>
+
+          <div class="mode-switch">
+            <label>
+              <input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
+              映像＋音声
+            </label>
+            <label>
+              <input v-model="watchMode" type="radio" value="audio" />
+              音声のみ
+            </label>
+          </div>
+
+          <div class="buttons">
+            <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
+            <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
+          </div>
+
+          <p v-if="isAudioOnlyLive" class="hint">
+            現在の配信は音声のみです。視聴は音声のみとなります。
+          </p>
+        </div>
+
+        <!-- 右：camera のときだけプレビュー -->
+        <div v-if="publishMode === 'camera'" class="live-controls-grid__right">
+          <video
+            ref="previewVideoRef"
+            class="camera-controls__video"
+            autoplay
+            playsinline
+            muted
+          ></video>
+        </div>
       </div>
-
-      <!-- screenの注意（常時表示でも、screen選択時のみでもOK） -->
-      <p v-if="publishMode === 'screen'" class="hint">
-        画面音声は「共有対象」と「共有ダイアログの音声共有設定」に依存します。
-        音声が取得できない場合は配信開始できません。
-      </p>
-
-      <!-- screen音声が取れなかった時の専用表示 -->
-      <p v-if="screenAudioNotice" class="error">
-        {{ screenAudioNotice }}
-      </p>
-
-      <div class="buttons">
-        <PrimeButton label="配信開始" :disabled="!canStartPublish" @click="onClickStartPublish" />
-        <PrimeButton label="配信停止" :disabled="!canStopPublish" @click="onClickStopPublish" />
-      </div>
-
-      <p v-if="isMyLive" class="hint">あなたが現在の配信者です。</p>
-
-      <hr class="live-sep" />
-
-      <h3>視聴</h3>
-
-      <div class="mode-switch">
-        <label
-          ><input v-model="watchMode" type="radio" value="av" :disabled="isAudioOnlyLive" />
-          映像＋音声</label
-        >
-        <label><input v-model="watchMode" type="radio" value="audio" /> 音声のみ</label>
-      </div>
-
-      <div class="buttons">
-        <PrimeButton label="視聴開始" :disabled="!canStartWatch" @click="onClickStartWatch" />
-        <PrimeButton label="視聴停止" :disabled="!canStopWatch" @click="onClickStopWatch" />
-      </div>
-      <p v-if="isAudioOnlyLive" class="hint">
-        現在の配信は音声のみです。視聴は音声のみとなります。
-      </p>
     </section>
-  </section>
 
-  <!-- 配信一覧（全体）: この部屋が liveEnabled=false でも見える -->
-
-  <section v-if="token" class="live-rooms-area">
-    <Accordion :active-index="0">
-      <AccordionPanel value="0">
-        <AccordionHeader>配信中の部屋一覧({{ liveCount }})</AccordionHeader>
-        <AccordionContent>
-          <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
-          <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
-          <p v-else-if="liveCount === 0 && !hasLoadedOnce" class="hint">準備中…</p>
-          <p v-else-if="liveCount === 0" class="hint">配信中の部屋はありません。</p>
-          <ul v-else class="live-rooms">
-            <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
-              <button
-                type="button"
-                class="live-rooms__card"
-                :disabled="userStore.currentRoom?.id === r.room"
-                :aria-current="userStore.currentRoom?.id === r.room ? 'page' : undefined"
-                @click="onClickVisiabilityRoom(r.room)"
-              >
-                <div class="live-rooms__room">{{ r.room }}</div>
-
-                <div class="live-rooms__meta">
-                  <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
-                  <span v-if="r.audioOnly">（音声のみ）</span>
-                </div>
-              </button>
-            </li>
-          </ul>
-        </AccordionContent>
-      </AccordionPanel>
-    </Accordion>
+    <!-- 配信一覧（全体）: この部屋が liveEnabled=false でも見える -->
+    <section v-if="token" class="live-rooms-area">
+      <Accordion :active-index="0">
+        <AccordionPanel value="0">
+          <AccordionHeader>配信中の部屋一覧({{ liveCount }})</AccordionHeader>
+          <AccordionContent>
+            <p v-if="isBusyRoomsList" class="hint">読み込み中…</p>
+            <p v-else-if="roomsListError" class="error">{{ roomsListError }}</p>
+            <p v-else-if="liveCount === 0 && !hasLoadedOnce" class="hint">準備中…</p>
+            <p v-else-if="liveCount === 0" class="hint">配信中の部屋はありません。</p>
+            <ul v-else class="live-rooms">
+              <li v-for="r in visibleLiveRooms" :key="r.room" class="live-rooms__item">
+                <button
+                  type="button"
+                  class="live-rooms__card"
+                  :disabled="userStore.currentRoom?.id === r.room"
+                  :aria-current="userStore.currentRoom?.id === r.room ? 'page' : undefined"
+                  @click="onClickVisiabilityRoom(r.room)"
+                >
+                  <div class="live-rooms__room">{{ r.room }}</div>
+                  <div class="live-rooms__meta">
+                    <span>配信者: {{ r.publisherName ?? "名無し" }}</span>
+                    <span v-if="r.audioOnly">（音声のみ）</span>
+                  </div>
+                </button>
+              </li>
+            </ul>
+          </AccordionContent>
+        </AccordionPanel>
+      </Accordion>
+    </section>
   </section>
 </template>
 
@@ -131,12 +184,22 @@ import { useLiveVideoStore } from "@/stores/liveVideo";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
+  getCameraStream,
+  listVideoInputs,
+  type CameraFacing,
+  type CameraStreamOptions,
+} from "@/webrtc/cameraManager";
+import { MediaAcquireError } from "@/webrtc/mediaErrors";
+import { restartPublishSessionSafely as restartPublishSessionSafelyHelper } from "@/webrtc/publishRestart";
+import { pickNextCameraDeviceId } from "@/domain/media/pickNextCameraDeviceId";
+import { resolveCameraDeviceId } from "@/domain/media/resolveCameraDeviceId";
+import { switchPublishCameraSafely } from "@/services/live/switchPublishCameraSafely";
+import {
   LiveRoomsChangedPayload,
   socketIOInstance,
   type LiveStatusChangePayload,
 } from "@/socketIOInstance";
 import {
-  MediaAcquireError,
   PublishCancelledError,
   startWhipPublish,
   type WhipPublishHandle,
@@ -207,6 +270,17 @@ const publisherId = ref<string | null>(null);
 const errorMessage = ref<string | null>(null);
 const publishMode = ref<PublishMode>("camera");
 const screenAudioNotice = ref<string | null>(null);
+const cameraFacing = ref<CameraFacing>("user");
+const preferRearOnStart = ref(false);
+const cameraDeviceId = ref<string | null>(null);
+const cameraDeviceIdFacing = ref<CameraFacing | null>(null);
+const cameraDevices = ref<MediaDeviceInfo[]>([]);
+const isSwitchingCamera = ref(false);
+const previewVideoRef = ref<HTMLVideoElement | null>(null);
+const previewStream = ref<MediaStream | null>(null);
+const isPreviewing = computed(() => previewStream.value != null);
+const whipUrlCache = ref<string | null>(null);
+const currentPublishVideoTrack = ref<MediaStreamTrack | null>(null);
 const isReadyToLoadLiveRooms = computed(() => {
   return !!token.value && !!roomId.value;
 });
@@ -249,6 +323,7 @@ const liveEnabled = computed(() => {
 const isMyLive = computed(
   () => isLive.value && publisherId.value != null && publisherId.value === myId.value,
 );
+const isOtherLive = computed(() => isLive.value && !isMyLive.value);
 
 // =====================
 // Socket.IO 配信状態変化受信
@@ -256,6 +331,157 @@ const isMyLive = computed(
 const clearPublishUiErrors = () => {
   errorMessage.value = null;
   screenAudioNotice.value = null;
+};
+
+const stopStreamTracks = (stream: MediaStream | null) => {
+  if (!stream) return;
+  for (const track of stream.getTracks()) {
+    try {
+      track.stop();
+    } catch {
+      // ignore
+    }
+  }
+};
+
+const stopPreviewStream = () => {
+  stopStreamTracks(previewStream.value);
+  previewStream.value = null;
+  if (previewVideoRef.value) {
+    previewVideoRef.value.srcObject = null;
+  }
+};
+
+const stopTrackSafe = (track: MediaStreamTrack) => {
+  try {
+    track.stop();
+  } catch {
+    // ignore
+  }
+};
+
+const getUserMediaRaw = async (constraints: MediaStreamConstraints): Promise<MediaStream> => {
+  const mediaDevices = navigator.mediaDevices;
+  if (!mediaDevices) {
+    const error = new Error("mediaDevices is not available") as Error & { name: string };
+    error.name = "NotSupportedError";
+    throw error;
+  }
+  return await mediaDevices.getUserMedia(constraints);
+};
+
+const loadCameraDevices = async (): Promise<MediaDeviceInfo[]> => {
+  const devices = await listVideoInputs();
+  cameraDevices.value = devices;
+  return devices;
+};
+
+const resolveCameraDeviceIdForFacing = async (
+  facing: CameraFacing,
+): Promise<{ deviceId: string | null; reason: string }> => {
+  const devices = await loadCameraDevices().catch(() => cameraDevices.value);
+  const resolved = resolveCameraDeviceId(devices, null, facing);
+  if (!isProd) {
+    console.debug("resolveCameraDeviceIdForFacing:", {
+      facing,
+      deviceId: resolved.deviceId,
+      reason: resolved.reason,
+    });
+  }
+  return { deviceId: resolved.deviceId, reason: resolved.reason };
+};
+
+const getCameraOptionsForFacing = async (facing: CameraFacing): Promise<CameraStreamOptions> => {
+  const canReuse = cameraDeviceId.value != null && cameraDeviceIdFacing.value === facing;
+  const resolved = canReuse
+    ? { deviceId: cameraDeviceId.value, reason: "reuse" }
+    : await resolveCameraDeviceIdForFacing(facing);
+  if (!isProd) {
+    console.debug("getCameraOptionsForFacing:", {
+      facing,
+      hasDeviceId: resolved.deviceId != null,
+      reason: resolved.reason,
+    });
+  }
+  if (resolved.deviceId) {
+    return { deviceId: resolved.deviceId, facing, widthIdeal: 1280, heightIdeal: 720 };
+  }
+  return { facing, widthIdeal: 1280, heightIdeal: 720 };
+};
+
+const attachPreviewStream = (stream: MediaStream) => {
+  previewStream.value = stream;
+  if (previewVideoRef.value) {
+    previewVideoRef.value.srcObject = stream;
+  }
+};
+
+const startPreviewStream = async (options: CameraStreamOptions) => {
+  const stream = await getCameraStream({ ...options, audio: false });
+  stopPreviewStream();
+  attachPreviewStream(stream);
+};
+
+const refreshPublishVideoTrack = () => {
+  const sender = publishHandle.value?.senders.find((item) => item.track?.kind === "video");
+  currentPublishVideoTrack.value = sender?.track ?? null;
+};
+
+const resolveSwitchErrorMessage = (errorName?: string): string => {
+  if (errorName === "NotAllowedError" || errorName === "SecurityError") {
+    return "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。";
+  }
+  if (errorName === "NotFoundError") {
+    return "利用可能なカメラが見つかりません。";
+  }
+  if (errorName === "OverconstrainedError") {
+    return "選択したカメラに対応していません。別のカメラをお試しください。";
+  }
+  if (errorName === "NotSupportedError") {
+    return "この端末/ブラウザではカメラ切替に未対応です。";
+  }
+  return "カメラの切替に失敗しました。";
+};
+
+const restartPublishSession = async (options: CameraStreamOptions) => {
+  if (!whipUrlCache.value) {
+    throw new Error("whip-url-missing");
+  }
+  if (!publishHandle.value) {
+    throw new Error("publish-handle-missing");
+  }
+  await publishHandle.value.stop().catch(() => {});
+  publishHandle.value = await startWhipPublish(whipUrlCache.value, {
+    mode: publishMode.value,
+    camera: { ...options, audio: true },
+    onDisplayEnded: () => {
+      if (publishHandle.value != null) {
+        void stopPublishSafely("display-ended", { uiPolicy: "silent" });
+      }
+    },
+  });
+  refreshPublishVideoTrack();
+};
+
+const restartPublishSessionSafely = async (options: CameraStreamOptions): Promise<boolean> => {
+  return await restartPublishSessionSafelyHelper({
+    restartPublishSession: () => restartPublishSession(options),
+    stopPublishSafely,
+    onRestartError: (e) => logErrorSafe("restartPublishSession failed", e),
+    onUiError: () => {
+      appendErrorMessage("配信の再開に失敗したため配信を停止しました。");
+    },
+  });
+};
+
+const replacePublishVideoTrack = async (nextTrack: MediaStreamTrack) => {
+  if (!publishHandle.value) return;
+  const sender = publishHandle.value.senders.find((item) => item.track?.kind === "video");
+  if (!sender) {
+    throw new Error("video-sender-missing");
+  }
+  await sender.replaceTrack(nextTrack);
+  currentPublishVideoTrack.value = nextTrack;
 };
 
 const handleLiveRoomsChanged = (p: LiveRoomsChangedPayload) => {
@@ -407,6 +633,14 @@ const appendErrorMessage = (msg: string) => {
   else errorMessage.value = msg;
 };
 
+const ensureCameraOperationAllowed = (): boolean => {
+  if (isOtherLive.value) {
+    appendErrorMessage("他のユーザーが配信中のため、カメラ操作はできません。");
+    return false;
+  }
+  return true;
+};
+
 const isBenignStopLiveError = (e: unknown): boolean => {
   if (!axios.isAxiosError(e)) return false;
   const status = e.response?.status;
@@ -456,6 +690,7 @@ const stopPublishSafely = async (reason: string, opts: StopPublishOpts = {}): Pr
         await handle.stop();
       } catch {}
     }
+    currentPublishVideoTrack.value = null;
 
     // 2) サーバ停止通知（ここだけが stopLive の唯一の呼び出し箇所）
     if (ctx) {
@@ -535,9 +770,20 @@ const onClickStartPublish = async () => {
     const config = await fetchWebrtcConfig(rid, tok);
     ensureNotAborted();
     if (!config.whipUrl) throw new Error("whip-url-missing");
+    whipUrlCache.value = config.whipUrl;
+
+    let cameraOptions: CameraStreamOptions | undefined;
+    if (publishMode.value === "camera") {
+      const facing = preferRearOnStart.value ? "environment" : cameraFacing.value;
+      cameraOptions = await getCameraOptionsForFacing(facing);
+      cameraDeviceId.value = cameraOptions.deviceId ?? null;
+      cameraFacing.value = facing;
+      stopPreviewStream();
+    }
 
     tmpHandle = await startWhipPublish(config.whipUrl, {
       mode: publishMode.value,
+      camera: cameraOptions,
       onDisplayEnded: () => {
         if (publishHandle.value != null) {
           void stopPublishSafely("display-ended", { uiPolicy: "silent" });
@@ -550,6 +796,7 @@ const onClickStartPublish = async () => {
     ensureNotAborted();
 
     publishHandle.value = tmpHandle;
+    refreshPublishVideoTrack();
     tmpHandle = null;
 
     if (cancelledPublishAttempts.has(attemptId)) {
@@ -637,6 +884,10 @@ const onClickStartPublishCatch = async (
         errorMessage.value = "マイクやカメラへのアクセスがブラウザに拒否されています。";
       } else if (e.code === "no-device") {
         errorMessage.value = "利用可能なマイク／カメラが見つかりません。";
+      } else if (e.code === "constraint-failed") {
+        errorMessage.value = "選択したカメラに対応していません。別のカメラをお試しください。";
+      } else if (e.code === "not-supported") {
+        errorMessage.value = "この端末/ブラウザではカメラ取得に未対応です。";
       } else {
         errorMessage.value = "マイク／カメラの取得に失敗しました。";
       }
@@ -662,6 +913,121 @@ const onClickStopPublish = async () => {
   if (!canStopPublish.value) return;
 
   await stopPublishSafely("manual");
+};
+
+const onClickStartPreview = async () => {
+  if (!ensureCameraOperationAllowed()) return;
+  clearPublishUiErrors();
+  try {
+    const options = await getCameraOptionsForFacing(cameraFacing.value);
+    await startPreviewStream(options);
+    cameraDeviceId.value = options.deviceId ?? null;
+    cameraDeviceIdFacing.value = cameraFacing.value;
+  } catch (e) {
+    if (e instanceof MediaAcquireError) {
+      if (e.code === "permission-denied") {
+        errorMessage.value =
+          "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。";
+      } else if (e.code === "no-device") {
+        errorMessage.value = "利用可能なカメラが見つかりません。";
+      } else if (e.code === "constraint-failed") {
+        errorMessage.value = "選択したカメラに対応していません。別のカメラをお試しください。";
+      } else if (e.code === "not-supported") {
+        errorMessage.value = "この端末/ブラウザではカメラ取得に未対応です。";
+      } else {
+        errorMessage.value = "カメラの取得に失敗しました。";
+      }
+    } else {
+      errorMessage.value = "カメラの取得に失敗しました。";
+    }
+  }
+};
+
+const onClickToggleCamera = async () => {
+  clearPublishUiErrors();
+
+  const prevFacing = cameraFacing.value;
+  const nextFacing: CameraFacing = prevFacing === "user" ? "environment" : "user";
+
+  if (isSwitchingCamera.value) return;
+  isSwitchingCamera.value = true;
+
+  try {
+    const devices = await loadCameraDevices().catch(() => cameraDevices.value);
+
+    if (!publishHandle.value) {
+      const pickNext = pickNextCameraDeviceId(devices, cameraDeviceId.value);
+      const resolved = pickNext.ok
+        ? { deviceId: pickNext.deviceId, reason: pickNext.reason }
+        : resolveCameraDeviceId(devices, null, nextFacing);
+      const options: CameraStreamOptions = {
+        deviceId: resolved.deviceId ?? undefined,
+        facing: resolved.deviceId ? undefined : nextFacing,
+        widthIdeal: 1280,
+        heightIdeal: 720,
+      };
+
+      const nextStream = await getCameraStream({ ...options, audio: false });
+      stopPreviewStream();
+      attachPreviewStream(nextStream);
+
+      cameraFacing.value = nextFacing;
+      cameraDeviceId.value = resolved.deviceId ?? null;
+      cameraDeviceIdFacing.value = nextFacing;
+      return;
+    }
+
+    if (publishHandle.value && publishMode.value === "camera") {
+      const result = await switchPublishCameraSafely(
+        {
+          currentTrack: currentPublishVideoTrack.value,
+          devices,
+          currentFacingMode: prevFacing,
+          currentDeviceId: cameraDeviceId.value,
+        },
+        {
+          getUserMedia: getUserMediaRaw,
+          replacePublishVideoTrack: async (track) => replacePublishVideoTrack(track),
+          restartPublishSessionSafely: async (options) =>
+            restartPublishSessionSafely({
+              ...options,
+              widthIdeal: 1280,
+              heightIdeal: 720,
+            }),
+          stopTrack: stopTrackSafe,
+        },
+      );
+
+      if (!result.ok) {
+        appendErrorMessage(resolveSwitchErrorMessage(result.errorName));
+        return;
+      }
+
+      cameraFacing.value = result.nextFacingMode;
+      cameraDeviceId.value = result.nextDeviceId ?? null;
+      cameraDeviceIdFacing.value = result.nextFacingMode;
+    }
+  } catch (e) {
+    if (e instanceof MediaAcquireError) {
+      if (e.code === "permission-denied") {
+        appendErrorMessage(
+          "カメラへのアクセスが拒否されています。ブラウザの権限を確認してください。",
+        );
+      } else if (e.code === "no-device") {
+        appendErrorMessage("利用可能なカメラが見つかりません。");
+      } else if (e.code === "constraint-failed") {
+        appendErrorMessage("選択したカメラに対応していません。別のカメラをお試しください。");
+      } else if (e.code === "not-supported") {
+        appendErrorMessage("この端末/ブラウザではカメラ切替に未対応です。");
+      } else {
+        appendErrorMessage("カメラの切替に失敗しました。");
+      }
+    } else {
+      appendErrorMessage("カメラの切替に失敗しました。");
+    }
+  } finally {
+    isSwitchingCamera.value = false;
+  }
 };
 
 const onClickStartWatch = async () => {
@@ -842,6 +1208,16 @@ watch(isAudioOnlyLive, (val) => {
 });
 
 watch(
+  publishMode,
+  (mode) => {
+    if (mode !== "camera") {
+      stopPreviewStream();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
   () => liveEnabled.value,
   (enabled) => {
     if (!enabled) return;
@@ -886,6 +1262,8 @@ onBeforeUnmount(() => {
     void stopPublishSafely("unmount");
   }
 
+  stopPreviewStream();
+
   if (subscribeHandle.value) {
     subscribeHandle.value.stop().catch(() => {});
     subscribeHandle.value = null;
@@ -912,12 +1290,17 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 12px;
   padding: 14px;
-  height: 100%;
 }
 
 .live-card h3 {
   margin: 0 0 10px;
   font-size: 15px;
+  font-weight: 700;
+}
+
+.subheading {
+  margin: 0;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -935,6 +1318,34 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
+/* 2カラムの主構造：camera時だけ右にプレビュー */
+.live-controls-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.live-controls-grid--with-preview {
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.live-controls-grid__left {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.live-controls-grid__right {
+  min-width: 0;
+  height: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+
+/* ボタン */
 .buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -942,8 +1353,38 @@ onBeforeUnmount(() => {
 }
 
 .buttons :deep(.p-button) {
+  width: 100%;
   padding: 8px 10px;
   font-size: 13px;
+}
+
+/* camera操作群 */
+.camera-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.camera-actions__option {
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.camera-actions__hint {
+  margin: 0;
+}
+
+/* プレビュー映像（camera のときだけDOMが存在するのでプレースホルダーではない） */
+.camera-controls__video {
+  width: 100%;
+  height: 100%;
+  background: #111;
+  border-radius: 10px;
+  display: block;
+  object-fit: cover;
+  max-height: 420px;
 }
 
 .error {
@@ -954,7 +1395,7 @@ onBeforeUnmount(() => {
 .hint {
   font-size: 0.8rem;
   opacity: 0.8;
-  margin-top: 10px;
+  margin: 0;
 }
 
 .live-rooms-area {
@@ -967,6 +1408,41 @@ onBeforeUnmount(() => {
   margin: 0;
   display: grid;
   gap: 8px;
+}
+
+.live-rooms__item {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.live-rooms__card {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  display: block;
+  text-align: left;
+  border: 0;
+  padding: 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+}
+
+.live-rooms__card:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.live-rooms__card:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.live-rooms__card:focus-visible {
+  outline: 2px solid rgba(0, 0, 0, 0.35);
+  outline-offset: 3px;
 }
 
 .live-rooms__room {
@@ -982,48 +1458,12 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-.live-rooms__item {
-  /* li側はレイアウトだけ。カード見た目は button 側に寄せる */
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-/* 重要：ボタンの標準見た目を完全に殺す */
-.live-rooms__card {
-  appearance: none;
-  -webkit-appearance: none;
-
-  /* クリック領域をカード全体に */
-  width: 100%;
-  display: block;
-  text-align: left;
-
-  /* 標準ボタンの余白/枠/背景を消す */
-  border: 0;
-  padding: 10px; /* ← ここは元の .live-rooms__item の padding と合わせる */
-  background: #fff;
-  color: inherit;
-  font: inherit;
-
-  /* ここから “カードの見た目” */
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 10px;
-}
-
-/* disabled を本当に効かせる（見た目も） */
-.live-rooms__card:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.live-rooms__card:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.035);
-}
-
-/* キーボード操作時のフォーカス可視化（見た目を壊さない範囲で） */
-.live-rooms__card:focus-visible {
-  outline: 2px solid rgba(0, 0, 0, 0.35);
-  outline-offset: 3px;
+@media (max-width: 760px) {
+  .live-controls-grid--with-preview {
+    grid-template-columns: 1fr;
+  }
+  .camera-controls__video {
+    max-height: 260px;
+  }
 }
 </style>

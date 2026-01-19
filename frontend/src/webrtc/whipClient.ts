@@ -1,5 +1,7 @@
-import { waitForIceGatheringComplete } from "./ice";
-import { requireCreatedSdpWithLocation } from "./webRTChelper";
+import { getCameraStream, type CameraStreamOptions } from "@/webrtc/cameraManager";
+import { waitForIceGatheringComplete } from "@/webrtc/ice";
+import { MediaAcquireError, toMediaAcquireError } from "@/webrtc/mediaErrors";
+import { requireCreatedSdpWithLocation } from "@/webrtc/webRTChelper";
 
 export type PublishMode = "camera" | "screen" | "audio";
 
@@ -15,22 +17,8 @@ export type WhipPublishHandle = {
 export type WhipPublishOptions = {
   mode?: PublishMode;
   onDisplayEnded?: () => void;
+  camera?: CameraStreamOptions;
 };
-
-export class MediaAcquireError extends Error {
-  code:
-    | "permission-denied"
-    | "no-device"
-    | "constraint-failed"
-    | "not-supported"
-    | "screen-audio-unavailable"
-    | "unknown";
-
-  constructor(code: MediaAcquireError["code"], message?: string) {
-    super(message);
-    this.code = code;
-  }
-}
 
 export class PublishCancelledError extends Error {
   reason: "display-ended";
@@ -40,47 +28,9 @@ export class PublishCancelledError extends Error {
   }
 }
 
-const toMediaAcquireError = (e: unknown): MediaAcquireError => {
-  if (e instanceof DOMException) {
-    if (e.name === "NotAllowedError" || e.name === "SecurityError") {
-      return new MediaAcquireError("permission-denied", e.message);
-    }
-    if (e.name === "NotFoundError") {
-      return new MediaAcquireError("no-device", e.message);
-    }
-    if (e.name === "OverconstrainedError") {
-      return new MediaAcquireError("constraint-failed", e.message);
-    }
-    if (e.name === "NotSupportedError") {
-      return new MediaAcquireError("not-supported", e.message);
-    }
-  }
-
-  // getDisplayMedia 未実装環境で起きがち
-  if (e instanceof TypeError) {
-    return new MediaAcquireError("not-supported", e.message);
-  }
-
-  return new MediaAcquireError("unknown", e instanceof Error ? e.message : String(e));
-};
-
 const getMicStream = async (): Promise<MediaStream> => {
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  } catch (e: unknown) {
-    throw toMediaAcquireError(e);
-  }
-};
-
-const getCameraStream = async (): Promise<MediaStream> => {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: {
-        width: 1280,
-        height: 720,
-      },
-    });
   } catch (e: unknown) {
     throw toMediaAcquireError(e);
   }
@@ -121,7 +71,52 @@ const stopStream = (s: MediaStream): void => {
   }
 };
 
-async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult> {
+type TrackRegistry = {
+  registerTrack: (track: MediaStreamTrack | null | undefined) => void;
+  registerStream: (stream: MediaStream | null | undefined) => void;
+  stopAll: () => void;
+};
+
+const createTrackRegistry = (): TrackRegistry => {
+  const tracks = new Set<MediaStreamTrack>();
+
+  const registerTrack = (track: MediaStreamTrack | null | undefined): void => {
+    if (track == null) return;
+    tracks.add(track);
+  };
+
+  const registerStream = (stream: MediaStream | null | undefined): void => {
+    if (stream == null) return;
+    for (const track of stream.getTracks()) registerTrack(track);
+  };
+
+  const stopAll = (): void => {
+    for (const track of tracks) {
+      try {
+        track.stop();
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  return { registerTrack, registerStream, stopAll };
+};
+
+const wrapSenderReplaceTrack = (sender: RTCRtpSender, registry: TrackRegistry): void => {
+  const originalReplaceTrack = sender.replaceTrack?.bind(sender);
+  if (originalReplaceTrack == null) return;
+
+  sender.replaceTrack = async (track: MediaStreamTrack | null): Promise<void> => {
+    registry.registerTrack(track);
+    await originalReplaceTrack(track);
+  };
+};
+
+async function getStreamForMode(
+  mode: PublishMode,
+  cameraOptions: CameraStreamOptions = {},
+): Promise<StreamForModeResult> {
   if (mode === "audio") {
     const micStream = await getMicStream();
     return { composed: micStream, sources: [micStream] };
@@ -155,7 +150,12 @@ async function getStreamForMode(mode: PublishMode): Promise<StreamForModeResult>
     };
   }
 
-  const cameraStream = await getCameraStream();
+  const cameraStream = await getCameraStream({
+    audio: true,
+    widthIdeal: 1280,
+    heightIdeal: 720,
+    ...cameraOptions,
+  });
   return { composed: cameraStream, sources: [cameraStream] };
 }
 
@@ -179,12 +179,14 @@ export async function startWhipPublish(
   let displayTrackEndedHandler: (() => void) | null = null;
   let displayTrack: MediaStreamTrack | undefined;
   const senders: RTCRtpSender[] = [];
+  const trackRegistry = createTrackRegistry();
 
   try {
-    const streamResult = await getStreamForMode(mode);
+    const streamResult = await getStreamForMode(mode, options.camera);
     composedStream = streamResult.composed;
     sourceStreams = streamResult.sources;
     displayTrack = streamResult.displayVideoTrack;
+    for (const source of sourceStreams) trackRegistry.registerStream(source);
 
     //  listener はここでOK（strict-boolean対応）
     if (displayTrack !== undefined && options.onDisplayEnded != null) {
@@ -206,6 +208,8 @@ export async function startWhipPublish(
     for (const track of composedStream.getTracks()) {
       const sender = pc.addTrack(track, composedStream);
       senders.push(sender);
+      trackRegistry.registerTrack(track);
+      wrapSenderReplaceTrack(sender, trackRegistry);
     }
 
     const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
@@ -253,8 +257,11 @@ export async function startWhipPublish(
           await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
         }
       } finally {
-        pc?.close();
-        for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
+        try {
+          trackRegistry.stopAll();
+        } finally {
+          pc?.close();
+        }
       }
     };
 
@@ -268,8 +275,11 @@ export async function startWhipPublish(
     if (!stopped && resourceUrl != null) {
       await fetch(resourceUrl, { method: "DELETE" }).catch(() => {});
     }
-    pc?.close();
-    for (const s of sourceStreams) for (const t of s.getTracks()) t.stop();
+    try {
+      trackRegistry.stopAll();
+    } finally {
+      pc?.close();
+    }
     throw e;
   }
 }
