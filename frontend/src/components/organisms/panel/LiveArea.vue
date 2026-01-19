@@ -174,13 +174,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import axios from "axios";
 import { useUserStore } from "@/stores/user";
 import { useRoomStore } from "@/stores/room";
 import { useLiveRoomsStore } from "@/stores/liveRooms";
 import { useLiveVideoStore } from "@/stores/liveVideo";
+import { useUIStore } from "@/stores/ui";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
@@ -244,6 +245,7 @@ const logErrorSafe = (label: string, e: unknown) => {
 
 const userStore = useUserStore();
 const roomStore = useRoomStore();
+const uiStore = useUIStore();
 const router = useRouter();
 
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
@@ -255,6 +257,7 @@ const myId = computed(() => userStore.myID);
 // =====================
 const liveRoomsStore = useLiveRoomsStore();
 const liveVideoStore = useLiveVideoStore();
+const { isLiveVisible } = storeToRefs(uiStore);
 const {
   visibleLiveRooms,
   hasLoadedOnce,
@@ -1033,6 +1036,24 @@ const onClickToggleCamera = async () => {
 const onClickStartWatch = async () => {
   if (!roomId.value || !token.value) return;
   if (!canStartWatch.value) return;
+  if (!videoElement.value) {
+    isLiveVisible.value = true;
+    await nextTick();
+  }
+  if (!videoElement.value) {
+    await new Promise<void>((resolve) => {
+      const stop = watch(
+        videoElement,
+        (element) => {
+          if (element) {
+            stop();
+            resolve();
+          }
+        },
+        { flush: "post" },
+      );
+    });
+  }
   if (!videoElement.value) {
     errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
     return;
