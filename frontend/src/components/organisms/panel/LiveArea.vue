@@ -1036,9 +1036,12 @@ const onClickToggleCamera = async () => {
 };
 
 const onClickStartWatch = async () => {
-  if (!roomId.value || !token.value) return;
+  const startRoomId = roomId.value;
+  const startToken = token.value;
+  if (!startRoomId || !startToken) return;
   if (isStartingWatch.value) return;
-  if (!canStartWatch.value) return;
+  if (!liveEnabled.value || !isLive.value) return;
+  if (isBusyWatch.value || subscribeHandle.value || watchSubscribeInFlight.value) return;
   isStartingWatch.value = true;
   let subscribePromise: Promise<WhepSubscribeHandle> | null = null;
 
@@ -1065,14 +1068,14 @@ const onClickStartWatch = async () => {
       errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
       return;
     }
-    if (!canStartWatch.value || subscribeHandle.value || watchSubscribeInFlight.value) {
+    if (subscribeHandle.value || watchSubscribeInFlight.value) {
       return;
     }
 
     errorMessage.value = null;
     isBusyWatch.value = true;
 
-    const config = await fetchWebrtcConfig(roomId.value, token.value);
+    const config = await fetchWebrtcConfig(startRoomId, startToken);
     if (!config.whepUrl) {
       throw new Error("whep-url-missing");
     }
