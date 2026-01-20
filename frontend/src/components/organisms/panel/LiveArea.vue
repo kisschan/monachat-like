@@ -307,6 +307,7 @@ const isStartingWatch = ref(false);
 const watchSubscribeInFlight = ref<Promise<WhepSubscribeHandle> | null>(null);
 const subscribeHandle = ref<WhepSubscribeHandle | null>(null);
 const { videoElement } = storeToRefs(liveVideoStore);
+const LIVE_WINDOW_WAIT_TIMEOUT_MS = 5000;
 const watchMode = ref<"av" | "audio">("av");
 const isWatchAudioOnly = computed(() => {
   // 配信が audio-only のときは強制
@@ -1047,22 +1048,51 @@ const onClickStartWatch = async () => {
 
   try {
     if (!videoElement.value) {
+      if (router.currentRoute.value.name !== "room") {
+        errorMessage.value = "LIVE窓を表示できる画面で視聴を開始してください。";
+        return;
+      }
       uiStore.openLiveWindow();
       await nextTick();
     }
     if (!videoElement.value) {
-      await new Promise<void>((resolve) => {
-        const stop = watch(
+      const hasVideoElement = await new Promise<boolean>((resolve) => {
+        let timeoutId: number | null = null;
+        const stopVideoWatch = watch(
           videoElement,
           (element) => {
             if (element) {
-              stop();
-              resolve();
+              cleanup();
+              resolve(true);
             }
           },
           { flush: "post" },
         );
+        const stopRouteWatch = watch(
+          () => router.currentRoute.value.name,
+          (name) => {
+            if (name !== "room") {
+              cleanup();
+              resolve(false);
+            }
+          },
+        );
+        const cleanup = () => {
+          stopVideoWatch();
+          stopRouteWatch();
+          if (timeoutId) {
+            window.clearTimeout(timeoutId);
+          }
+        };
+        timeoutId = window.setTimeout(() => {
+          cleanup();
+          resolve(false);
+        }, LIVE_WINDOW_WAIT_TIMEOUT_MS);
       });
+      if (!hasVideoElement) {
+        errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
+        return;
+      }
     }
     if (!videoElement.value) {
       errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
