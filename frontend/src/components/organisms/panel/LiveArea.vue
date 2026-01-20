@@ -1056,6 +1056,7 @@ const onClickStartWatch = async () => {
       await nextTick();
     }
     if (!videoElement.value) {
+      const startRouteParam = String(router.currentRoute.value.params.id ?? "");
       const hasVideoElement = await new Promise<boolean>((resolve) => {
         let timeoutId: number | null = null;
         const stopVideoWatch = watch(
@@ -1069,9 +1070,18 @@ const onClickStartWatch = async () => {
           { flush: "post" },
         );
         const stopRouteWatch = watch(
-          () => router.currentRoute.value.name,
-          (name) => {
+          () => [
+            router.currentRoute.value.name,
+            String(router.currentRoute.value.params.id ?? ""),
+            roomId.value,
+          ],
+          ([name, currentRouteParam, currentRoomId]) => {
             if (name !== "room") {
+              cleanup();
+              resolve(false);
+              return;
+            }
+            if (currentRouteParam !== startRouteParam || currentRoomId !== startRoomId) {
               cleanup();
               resolve(false);
             }
