@@ -345,7 +345,7 @@ const toggleLiveWindow = () => {
   uiStore.toggleLiveWindow();
 };
 const closeLiveWindow = () => {
-  uiStore.toggleLiveWindow();
+  uiStore.closeLiveWindow();
 };
 const click = ({ ihash }: { ihash: string }) => {
   if (settingStore.isClickToChangeColorEnabled) {
