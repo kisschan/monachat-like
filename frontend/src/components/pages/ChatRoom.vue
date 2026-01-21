@@ -171,13 +171,12 @@ const permittedSubmitting = ref(true); // チャットの送信が許可され�
 const keyCount = ref(0); // キータイプ数
 const typingStartTime = ref(0); // タイピング開始時刻
 const activePointerId = ref<number | null>(null);
-const isLiveVisible = ref(false);
 
 // ストア
 const { disconnected, myID } = storeToRefs(userStore);
 const { chatMessages, visibleUsers } = storeToRefs(usersStore);
 const { visibleLogMessages } = storeToRefs(logStore);
-const { isLogVisible, panelBackgroundColor } = storeToRefs(uiStore);
+const { isLogVisible, isLiveVisible, panelBackgroundColor } = storeToRefs(uiStore);
 const selectedVolume = computed({
   get: () => settingStore.selectedVolume,
   set: (value) => settingStore.updateSelectedVolume(value),
@@ -343,10 +342,10 @@ const clickLogLines = () => {
   }
 };
 const toggleLiveWindow = () => {
-  isLiveVisible.value = !isLiveVisible.value;
+  uiStore.toggleLiveWindow();
 };
 const closeLiveWindow = () => {
-  isLiveVisible.value = false;
+  uiStore.closeLiveWindow();
 };
 const click = ({ ihash }: { ihash: string }) => {
   if (settingStore.isClickToChangeColorEnabled) {
