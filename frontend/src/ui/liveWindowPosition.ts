@@ -8,6 +8,19 @@ export type Bounds = {
   maxY: number;
 };
 
+export type LeftResizeAnchoredInput = {
+  pointerX: number;
+  startRight: number;
+  containerWidth: number;
+  minWidth: number;
+  maxWidth: number;
+};
+
+export type LeftResizeAnchoredResult = {
+  x: number;
+  width: number;
+};
+
 export const clamp = (value: number, min: number, max: number) => {
   if (max < min) {
     return min;
@@ -31,4 +44,23 @@ export const pxToPct = (value: number, max: number) => {
 
 export const pctToPx = (pct: number, max: number) => {
   return clamp(pct * max, 0, max);
+};
+
+export const resizeFromLeftAnchored = ({
+  pointerX,
+  startRight,
+  containerWidth,
+  minWidth,
+  maxWidth,
+}: LeftResizeAnchoredInput): LeftResizeAnchoredResult => {
+  const effectiveMaxWidth = Math.min(Math.max(0, maxWidth), Math.max(0, containerWidth));
+  const effectiveMinWidth = Math.min(Math.max(0, minWidth), effectiveMaxWidth);
+  const rightEdge = clamp(startRight, effectiveMinWidth, Math.max(0, containerWidth));
+  const minX = Math.max(0, rightEdge - effectiveMaxWidth);
+  const maxX = Math.max(minX, rightEdge - effectiveMinWidth);
+  const x = clamp(pointerX, minX, maxX);
+  return {
+    x,
+    width: rightEdge - x,
+  };
 };

@@ -78,7 +78,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import LiveVideoPane from "@/components/organisms/LiveVideoPane.vue";
 import { useLiveVideoStore } from "@/stores/liveVideo";
-import { clamp, computeBounds, pctToPx, pxToPct } from "@/ui/liveWindowPosition";
+import { clamp, computeBounds, pctToPx, pxToPct, resizeFromLeftAnchored } from "@/ui/liveWindowPosition";
 
 const props = withDefaults(defineProps<{ isAudioOnly?: boolean; container?: HTMLElement | null }>(), {
   isAudioOnly: false,
@@ -106,7 +106,17 @@ const activePointerId = ref<number | null>(null);
 const dragPointerId = ref<number | null>(null);
 const size = ref({ width: 520, height: 320 });
 const maxSize = ref({ width: 520, height: 320 });
-const resizeStart = ref({ x: 0, y: 0, width: 0, height: 0 });
+const resizeStart = ref({
+  pointerX: 0,
+  pointerY: 0,
+  width: 0,
+  height: 0,
+  startRight: 0,
+  containerLeft: 0,
+  containerTop: 0,
+  containerWidth: 0,
+  containerHeight: 0,
+});
 const bounds = ref({ maxX: 0, maxY: 0 });
 const positionPx = ref({ x: 0, y: 0 });
 const positionPct = ref({ xPct: 0, yPct: 0 });
@@ -235,11 +245,46 @@ const onResizePointerMove = (event: PointerEvent) => {
   }
   event.preventDefault();
   event.stopPropagation();
-  const next = clampSize({
-    width: resizeStart.value.width + (resizeStart.value.x - event.clientX),
-    height: resizeStart.value.height + (event.clientY - resizeStart.value.y),
+  const {
+    containerLeft,
+    containerTop,
+    containerWidth,
+    containerHeight,
+    pointerY: startPointerY,
+    height: startHeight,
+    startRight,
+  } = resizeStart.value;
+  if (containerWidth <= 0 || containerHeight <= 0) {
+    return;
+  }
+  const pointerX = event.clientX - containerLeft;
+  const pointerY = event.clientY - containerTop;
+  const leftResize = resizeFromLeftAnchored({
+    pointerX,
+    startRight,
+    containerWidth,
+    minWidth: MIN_WIDTH,
+    maxWidth: maxSize.value.width,
   });
-  size.value = next;
+  const availableHeight = Math.max(0, containerHeight - positionPx.value.y);
+  const maxHeight = Math.min(maxSize.value.height, availableHeight);
+  const minHeight = Math.min(MIN_HEIGHT, maxHeight);
+  const heightDelta = pointerY - startPointerY;
+  const nextHeight = clamp(startHeight + heightDelta, minHeight, maxHeight);
+  const nextSize = {
+    width: leftResize.width,
+    height: nextHeight,
+  };
+  const nextBounds = computeBounds(
+    { width: containerWidth, height: containerHeight },
+    { width: nextSize.width, height: nextSize.height },
+  );
+  bounds.value = nextBounds;
+  size.value = nextSize;
+  setPositionPx({
+    x: leftResize.x,
+    y: clamp(positionPx.value.y, 0, nextBounds.maxY),
+  });
 };
 
 const endResize = (event: PointerEvent) => {
@@ -269,13 +314,25 @@ const startResize = (event: PointerEvent) => {
   if (activePointerId.value !== null) {
     return;
   }
+  const container = getContainerElement();
+  if (!container) {
+    return;
+  }
+  const containerRect = container.getBoundingClientRect();
   lockOverscroll();
   activePointerId.value = event.pointerId;
+  const pointerX = event.clientX - containerRect.left;
+  const pointerY = event.clientY - containerRect.top;
   resizeStart.value = {
-    x: event.clientX,
-    y: event.clientY,
+    pointerX,
+    pointerY,
     width: size.value.width,
     height: size.value.height,
+    startRight: clamp(positionPx.value.x + size.value.width, 0, containerRect.width),
+    containerLeft: containerRect.left,
+    containerTop: containerRect.top,
+    containerWidth: containerRect.width,
+    containerHeight: containerRect.height,
   };
   const handle = resizeHandleRef.value ?? (event.currentTarget as HTMLElement | null);
   handle?.setPointerCapture(event.pointerId);
