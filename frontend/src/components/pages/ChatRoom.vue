@@ -34,7 +34,7 @@
         <div class="log-row"><SpanText :text="`${log.head}${log.content}${log.foot}`" /></div>
       </div>
     </div>
-    <LiveWindowOverlay v-if="shouldRenderLiveOverlay" @close="closeLiveWindow" />
+    <LiveWindowOverlay v-if="shouldRenderLiveOverlay" :container="root" @close="closeLiveWindow" />
     <img
       v-if="currentRoom != undefined"
       class="room-img"

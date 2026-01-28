@@ -13,9 +13,21 @@
     @touchmove.stop
   >
     <header class="live-window__header">
-      <div class="live-window__title">
-        <span class="live-window__badge">LIVE</span>
-        <span class="live-window__text">ライブ映像</span>
+      <div class="live-window__header-left">
+        <button
+          ref="dragHandleRef"
+          type="button"
+          class="live-window__drag-handle"
+          aria-label="ライブ窓を移動"
+          @pointerdown.stop.prevent="startDrag"
+          @mousedown.stop.prevent
+        >
+          <span class="live-window__drag-icon" aria-hidden="true"></span>
+        </button>
+        <div class="live-window__title">
+          <span class="live-window__badge">LIVE</span>
+          <span class="live-window__text">ライブ映像</span>
+        </div>
       </div>
 
       <div class="live-window__size-controls" role="group" aria-label="ライブ窓サイズ">
@@ -62,13 +74,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import LiveVideoPane from "@/components/organisms/LiveVideoPane.vue";
 import { useLiveVideoStore } from "@/stores/liveVideo";
+import { clamp, computeBounds, pctToPx, pxToPct, resizeFromLeftAnchored } from "@/ui/liveWindowPosition";
 
-const props = withDefaults(defineProps<{ isAudioOnly?: boolean }>(), {
+const props = withDefaults(defineProps<{ isAudioOnly?: boolean; container?: HTMLElement | null }>(), {
   isAudioOnly: false,
+  container: null,
 });
 const emit = defineEmits<{
   (e: "close"): void;
@@ -81,14 +95,40 @@ const MIN_HEIGHT = 180;
 const VIEWPORT_PADDING_X = 32;
 const VIEWPORT_PADDING_Y = 120;
 const STORAGE_KEY = "live-window-size";
+const POSITION_STORAGE_KEY = "live-window-position";
+const DEFAULT_PADDING = 16;
 
 const liveVideoStore = useLiveVideoStore();
 const liveWindowRef = ref<HTMLElement | null>(null);
+const dragHandleRef = ref<HTMLElement | null>(null);
 const resizeHandleRef = ref<HTMLElement | null>(null);
 const activePointerId = ref<number | null>(null);
+const dragPointerId = ref<number | null>(null);
 const size = ref({ width: 520, height: 320 });
 const maxSize = ref({ width: 520, height: 320 });
-const resizeStart = ref({ x: 0, y: 0, width: 0, height: 0 });
+const resizeStart = ref({
+  pointerX: 0,
+  pointerY: 0,
+  width: 0,
+  height: 0,
+  startRight: 0,
+  containerLeft: 0,
+  containerTop: 0,
+  containerWidth: 0,
+  containerHeight: 0,
+});
+const bounds = ref({ maxX: 0, maxY: 0 });
+const positionPx = ref({ x: 0, y: 0 });
+const positionPct = ref({ xPct: 0, yPct: 0 });
+const dragStart = ref({ x: 0, y: 0, originX: 0, originY: 0 });
+const resizeObserver = ref<ResizeObserver | null>(null);
+
+const getContainerElement = () => {
+  if (props.container) {
+    return props.container;
+  }
+  return (liveWindowRef.value?.offsetParent as HTMLElement | null) ?? null;
+};
 
 const clampSize = (next: { width: number; height: number }) => {
   return {
@@ -98,14 +138,26 @@ const clampSize = (next: { width: number; height: number }) => {
 };
 
 const updateMaxSize = () => {
-  if (typeof window === "undefined") {
-    return;
+  const container = getContainerElement();
+  if (container) {
+    const rect = container.getBoundingClientRect();
+    maxSize.value = {
+      width: Math.max(MIN_WIDTH, rect.width - VIEWPORT_PADDING_X),
+      height: Math.max(MIN_HEIGHT, rect.height - VIEWPORT_PADDING_Y),
+    };
+  } else if (typeof window !== "undefined") {
+    maxSize.value = {
+      width: Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING_X),
+      height: Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING_Y),
+    };
   }
-  maxSize.value = {
-    width: Math.max(MIN_WIDTH, window.innerWidth - VIEWPORT_PADDING_X),
-    height: Math.max(MIN_HEIGHT, window.innerHeight - VIEWPORT_PADDING_Y),
-  };
   size.value = clampSize(size.value);
+};
+
+const handleLayoutChange = () => {
+  updateMaxSize();
+  updateBounds();
+  applyPositionFromPct();
 };
 
 const loadStoredSize = () => {
@@ -134,17 +186,111 @@ const saveStoredSize = (next: { width: number; height: number }) => {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 };
 
+const loadStoredPosition = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(POSITION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.xPct === "number" && typeof parsed?.yPct === "number") {
+      return { xPct: parsed.xPct, yPct: parsed.yPct };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const saveStoredPosition = (next: { xPct: number; yPct: number }) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(next));
+};
+
+const updateBounds = () => {
+  const container = getContainerElement();
+  const pane = liveWindowRef.value;
+  if (!container || !pane) {
+    return;
+  }
+  const containerRect = container.getBoundingClientRect();
+  const paneRect = pane.getBoundingClientRect();
+  bounds.value = computeBounds(
+    { width: containerRect.width, height: containerRect.height },
+    { width: paneRect.width, height: paneRect.height },
+  );
+};
+
+const applyPositionFromPct = () => {
+  positionPx.value = {
+    x: pctToPx(positionPct.value.xPct, bounds.value.maxX),
+    y: pctToPx(positionPct.value.yPct, bounds.value.maxY),
+  };
+};
+
+const setPositionPx = (next: { x: number; y: number }) => {
+  const clamped = {
+    x: clamp(next.x, 0, bounds.value.maxX),
+    y: clamp(next.y, 0, bounds.value.maxY),
+  };
+  positionPx.value = clamped;
+  positionPct.value = {
+    xPct: pxToPct(clamped.x, bounds.value.maxX),
+    yPct: pxToPct(clamped.y, bounds.value.maxY),
+  };
+};
+
 const onResizePointerMove = (event: PointerEvent) => {
   if (activePointerId.value !== event.pointerId) {
     return;
   }
   event.preventDefault();
   event.stopPropagation();
-  const next = clampSize({
-    width: resizeStart.value.width + (resizeStart.value.x - event.clientX),
-    height: resizeStart.value.height + (event.clientY - resizeStart.value.y),
+  const {
+    containerLeft,
+    containerTop,
+    containerWidth,
+    containerHeight,
+    pointerY: startPointerY,
+    height: startHeight,
+    startRight,
+  } = resizeStart.value;
+  if (containerWidth <= 0 || containerHeight <= 0) {
+    return;
+  }
+  const pointerX = event.clientX - containerLeft;
+  const pointerY = event.clientY - containerTop;
+  const leftResize = resizeFromLeftAnchored({
+    pointerX,
+    startRight,
+    containerWidth,
+    minWidth: MIN_WIDTH,
+    maxWidth: maxSize.value.width,
   });
-  size.value = next;
+  const availableHeight = Math.max(0, containerHeight - positionPx.value.y);
+  const maxHeight = Math.min(maxSize.value.height, availableHeight);
+  const minHeight = Math.min(MIN_HEIGHT, maxHeight);
+  const heightDelta = pointerY - startPointerY;
+  const nextHeight = clamp(startHeight + heightDelta, minHeight, maxHeight);
+  const nextSize = {
+    width: leftResize.width,
+    height: nextHeight,
+  };
+  const nextBounds = computeBounds(
+    { width: containerWidth, height: containerHeight },
+    { width: nextSize.width, height: nextSize.height },
+  );
+  bounds.value = nextBounds;
+  size.value = nextSize;
+  setPositionPx({
+    x: leftResize.x,
+    y: clamp(positionPx.value.y, 0, nextBounds.maxY),
+  });
 };
 
 const endResize = (event: PointerEvent) => {
@@ -165,7 +311,10 @@ const endResize = (event: PointerEvent) => {
   document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
   document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
   unlockOverscroll();
+  updateBounds();
+  setPositionPx(positionPx.value);
   saveStoredSize(size.value);
+  saveStoredPosition(positionPct.value);
 };
 
 const startResize = (event: PointerEvent) => {
@@ -174,13 +323,25 @@ const startResize = (event: PointerEvent) => {
   if (activePointerId.value !== null) {
     return;
   }
+  const container = getContainerElement();
+  if (!container) {
+    return;
+  }
+  const containerRect = container.getBoundingClientRect();
   lockOverscroll();
   activePointerId.value = event.pointerId;
+  const pointerX = event.clientX - containerRect.left;
+  const pointerY = event.clientY - containerRect.top;
   resizeStart.value = {
-    x: event.clientX,
-    y: event.clientY,
+    pointerX,
+    pointerY,
     width: size.value.width,
     height: size.value.height,
+    startRight: clamp(positionPx.value.x + size.value.width, 0, containerRect.width),
+    containerLeft: containerRect.left,
+    containerTop: containerRect.top,
+    containerWidth: containerRect.width,
+    containerHeight: containerRect.height,
   };
   const handle = resizeHandleRef.value ?? (event.currentTarget as HTMLElement | null);
   handle?.setPointerCapture(event.pointerId);
@@ -189,11 +350,64 @@ const startResize = (event: PointerEvent) => {
   document.addEventListener("pointercancel", endResize, ACTIVE_OPTS);
 };
 
+const onDragPointerMove = (event: PointerEvent) => {
+  if (dragPointerId.value !== event.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  const next = {
+    x: dragStart.value.originX + (event.clientX - dragStart.value.x),
+    y: dragStart.value.originY + (event.clientY - dragStart.value.y),
+  };
+  setPositionPx(next);
+};
+
+const endDrag = (event: PointerEvent) => {
+  if (dragPointerId.value !== event.pointerId) {
+    return;
+  }
+  event.preventDefault();
+  dragPointerId.value = null;
+  try {
+    if (dragHandleRef.value?.hasPointerCapture(event.pointerId)) {
+      dragHandleRef.value.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // ignore: releasePointerCapture can throw if capture already lost
+  }
+  document.removeEventListener("pointermove", onDragPointerMove, CAPTURE_OPTS);
+  document.removeEventListener("pointerup", endDrag, CAPTURE_OPTS);
+  document.removeEventListener("pointercancel", endDrag, CAPTURE_OPTS);
+  saveStoredPosition(positionPct.value);
+};
+
+const startDrag = (event: PointerEvent) => {
+  if (activePointerId.value !== null) {
+    return;
+  }
+  if (dragPointerId.value !== null) {
+    return;
+  }
+  dragPointerId.value = event.pointerId;
+  dragStart.value = {
+    x: event.clientX,
+    y: event.clientY,
+    originX: positionPx.value.x,
+    originY: positionPx.value.y,
+  };
+  const handle = dragHandleRef.value ?? (event.currentTarget as HTMLElement | null);
+  handle?.setPointerCapture(event.pointerId);
+  document.addEventListener("pointermove", onDragPointerMove, ACTIVE_OPTS);
+  document.addEventListener("pointerup", endDrag, ACTIVE_OPTS);
+  document.addEventListener("pointercancel", endDrag, ACTIVE_OPTS);
+};
+
 const liveWindowStyle = computed(() => ({
   width: `${size.value.width}px`,
   height: `${size.value.height}px`,
   maxWidth: `${maxSize.value.width}px`,
   maxHeight: `${maxSize.value.height}px`,
+  transform: `translate3d(${positionPx.value.x}px, ${positionPx.value.y}px, 0)`,
 }));
 
 const onVideoReady = (element: HTMLVideoElement | null) => {
@@ -276,41 +490,96 @@ const applyPreset = (preset: Preset) => {
 
   size.value = clampSize(pick);
   saveStoredSize(size.value);
+  nextTick(() => {
+    updateBounds();
+    applyPositionFromPct();
+  });
 };
 
 onMounted(async () => {
   updateMaxSize();
   await nextTick();
-  if (typeof window !== "undefined") {
-    window.addEventListener("resize", updateMaxSize);
-  }
+  updateBounds();
   const stored = loadStoredSize();
   if (stored) {
     size.value = clampSize(stored);
-    return;
   }
-  if (liveWindowRef.value) {
+  if (!stored && liveWindowRef.value) {
     const rect = liveWindowRef.value.getBoundingClientRect();
     size.value = clampSize({ width: rect.width, height: rect.height });
+  }
+  await nextTick();
+  updateBounds();
+  const storedPosition = loadStoredPosition();
+  if (storedPosition) {
+    positionPct.value = storedPosition;
+    applyPositionFromPct();
+  } else {
+    const defaultX = clamp(bounds.value.maxX - DEFAULT_PADDING, 0, bounds.value.maxX);
+    const defaultY = clamp(DEFAULT_PADDING, 0, bounds.value.maxY);
+    setPositionPx({ x: defaultX, y: defaultY });
+  }
+
+  if (typeof ResizeObserver !== "undefined") {
+    const observer = new ResizeObserver(() => {
+      handleLayoutChange();
+    });
+    const container = getContainerElement();
+    if (container) {
+      observer.observe(container);
+    }
+    if (liveWindowRef.value) {
+      observer.observe(liveWindowRef.value);
+    }
+    resizeObserver.value = observer;
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("resize", handleLayoutChange);
   }
 });
 
 onBeforeUnmount(() => {
+  resizeObserver.value?.disconnect();
   if (typeof window !== "undefined") {
-    window.removeEventListener("resize", updateMaxSize);
+    window.removeEventListener("resize", handleLayoutChange);
   }
   document.removeEventListener("pointermove", onResizePointerMove, CAPTURE_OPTS);
   document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
   document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
+  document.removeEventListener("pointermove", onDragPointerMove, CAPTURE_OPTS);
+  document.removeEventListener("pointerup", endDrag, CAPTURE_OPTS);
+  document.removeEventListener("pointercancel", endDrag, CAPTURE_OPTS);
   unlockOverscroll();
 });
+
+watch(
+  () => props.container,
+  async () => {
+    await nextTick();
+    handleLayoutChange();
+    resizeObserver.value?.disconnect();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        handleLayoutChange();
+      });
+      const container = getContainerElement();
+      if (container) {
+        observer.observe(container);
+      }
+      if (liveWindowRef.value) {
+        observer.observe(liveWindowRef.value);
+      }
+      resizeObserver.value = observer;
+    }
+  },
+);
 </script>
 
 <style scoped>
 .live-window {
   position: absolute;
-  top: 48px;
-  right: 16px;
+  top: 0;
+  left: 0;
   width: min(520px, 90vw);
   min-width: 320px;
   min-height: 180px;
@@ -324,6 +593,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  will-change: transform;
 }
 
 .live-window__header {
@@ -331,6 +601,37 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.live-window__header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-window__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: #f8f8f8;
+  cursor: grab;
+  touch-action: none;
+}
+
+.live-window__drag-handle:active {
+  cursor: grabbing;
+}
+
+.live-window__drag-icon {
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid rgba(0, 0, 0, 0.45);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45);
 }
 
 .live-window__title {
@@ -404,6 +705,11 @@ onBeforeUnmount(() => {
     bottom: 8px;
     border-bottom-width: 3px;
     border-left-width: 3px;
+  }
+
+  .live-window__drag-handle {
+    width: 40px;
+    height: 40px;
   }
 }
 </style>
