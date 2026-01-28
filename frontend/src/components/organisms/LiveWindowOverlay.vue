@@ -154,6 +154,12 @@ const updateMaxSize = () => {
   size.value = clampSize(size.value);
 };
 
+const handleLayoutChange = () => {
+  updateMaxSize();
+  updateBounds();
+  applyPositionFromPct();
+};
+
 const loadStoredSize = () => {
   if (typeof window === "undefined") {
     return null;
@@ -305,7 +311,10 @@ const endResize = (event: PointerEvent) => {
   document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
   document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
   unlockOverscroll();
+  updateBounds();
+  setPositionPx(positionPx.value);
   saveStoredSize(size.value);
+  saveStoredPosition(positionPct.value);
 };
 
 const startResize = (event: PointerEvent) => {
@@ -513,9 +522,7 @@ onMounted(async () => {
 
   if (typeof ResizeObserver !== "undefined") {
     const observer = new ResizeObserver(() => {
-      updateMaxSize();
-      updateBounds();
-      applyPositionFromPct();
+      handleLayoutChange();
     });
     const container = getContainerElement();
     if (container) {
@@ -526,10 +533,16 @@ onMounted(async () => {
     }
     resizeObserver.value = observer;
   }
+  if (typeof window !== "undefined") {
+    window.addEventListener("resize", handleLayoutChange);
+  }
 });
 
 onBeforeUnmount(() => {
   resizeObserver.value?.disconnect();
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", handleLayoutChange);
+  }
   document.removeEventListener("pointermove", onResizePointerMove, CAPTURE_OPTS);
   document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
   document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
@@ -543,15 +556,11 @@ watch(
   () => props.container,
   async () => {
     await nextTick();
-    updateMaxSize();
-    updateBounds();
-    applyPositionFromPct();
+    handleLayoutChange();
     resizeObserver.value?.disconnect();
     if (typeof ResizeObserver !== "undefined") {
       const observer = new ResizeObserver(() => {
-        updateMaxSize();
-        updateBounds();
-        applyPositionFromPct();
+        handleLayoutChange();
       });
       const container = getContainerElement();
       if (container) {
