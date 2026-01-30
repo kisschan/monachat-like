@@ -17,6 +17,7 @@ export const useUsersStore = defineStore("users", () => {
   const ihashsIgnoredByMe = ref<{ [key in string]: boolean }>({});
   const idsIgnoresMe = ref<{ [key in string]: boolean }>({});
   const ihashsSilentIgnoredByMe = ref<{ [key in string]: boolean }>({});
+  const ihashsLogExcludedByMe = ref<{ [key in string]: boolean }>({});
 
   // 画面に表示されているユーザー
   const visibleUsers = computed(() => {
@@ -206,6 +207,18 @@ export const useUsersStore = defineStore("users", () => {
   const updateUserSilentIgnore = (ihash: string, isActive: boolean) => {
     ihashsSilentIgnoredByMe.value[ihash] = isActive;
   };
+  const setLogExcluded = (ihash: string | undefined | null, isActive: boolean) => {
+    if (!ihash) {
+      return;
+    }
+    ihashsLogExcludedByMe.value[ihash] = isActive;
+  };
+  const toggleLogExcluded = (ihash: string | undefined | null) => {
+    if (!ihash) {
+      return;
+    }
+    ihashsLogExcludedByMe.value[ihash] = !(ihashsLogExcludedByMe.value[ihash] ?? false);
+  };
 
   return {
     users,
@@ -213,6 +226,7 @@ export const useUsersStore = defineStore("users", () => {
     ihashsIgnoredByMe,
     idsIgnoresMe,
     ihashsSilentIgnoredByMe,
+    ihashsLogExcludedByMe,
     visibleUsers,
     manageableUsers,
     silentUsers,
@@ -231,5 +245,7 @@ export const useUsersStore = defineStore("users", () => {
     updateUserIgnore,
     updateIDsIgnoresMe,
     updateUserSilentIgnore,
+    setLogExcluded,
+    toggleLogExcluded,
   };
 });

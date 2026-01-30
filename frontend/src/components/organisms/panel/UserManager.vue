@@ -58,6 +58,23 @@
           />
         </template>
       </Column>
+      <Column>
+        <template #header>
+          <SpanText text="ログから除外" :size="16" type="text" />
+        </template>
+        <template #body="logExcludeSlotProps">
+          <Checkbox
+            v-model="logExcludeSlotProps.data.isLogExcluded"
+            binary
+            @change="
+              onChangeLogExclude(
+                logExcludeSlotProps.data.ihash,
+                logExcludeSlotProps.data.isLogExcluded,
+              )
+            "
+          />
+        </template>
+      </Column>
     </DataTable>
   </div>
 </template>
@@ -90,6 +107,9 @@ const onClickIgnore = (ihash: string) => {
 const onChangeSilentIgnore = (ihash: string, isActive: boolean) => {
   userStore.toggleSilentIgnorance(ihash, isActive);
 };
+const onChangeLogExclude = (ihash: string, isActive: boolean) => {
+  usersStore.setLogExcluded(ihash, isActive);
+};
 const toggleUserSelecting = (ihash: string) => {
   settingStore.toggleUserSelecting(ihash);
 };
@@ -115,6 +135,7 @@ const manageableUsers = computed(() => {
       disp: userDisp(usersObj[id]!, id),
       ihash: usersObj[id]!.ihash,
       isSilentUser: usersStore.silentUsers[id] != undefined,
+      isLogExcluded: usersStore.ihashsLogExcludedByMe[usersObj[id]!.ihash] ?? false,
     };
   });
 });

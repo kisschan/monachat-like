@@ -54,9 +54,16 @@ export const useLogStore = defineStore("log", () => {
   });
   const visibleLogMessages = computed(() => {
     const usersStore = useUsersStore();
+    const isExcludedByMap = (ihash: string | undefined, map: Record<string, boolean>) => {
+      if (!ihash) {
+        return false;
+      }
+      return map[ihash] ?? false;
+    };
     return logMessages.value
-      .filter((e) => !(usersStore.ihashsSilentIgnoredByMe[e.ihash] ?? false))
-      .filter((e) => !(usersStore.ihashsIgnoredByMe[e.ihash] ?? false));
+      .filter((e) => !isExcludedByMap(e.ihash, usersStore.ihashsSilentIgnoredByMe))
+      .filter((e) => !isExcludedByMap(e.ihash, usersStore.ihashsIgnoredByMe))
+      .filter((e) => !isExcludedByMap(e.ihash, usersStore.ihashsLogExcludedByMe));
   });
 
   const appendCommentLog = ({ id, cmt, typing }: ChatMessage) => {
