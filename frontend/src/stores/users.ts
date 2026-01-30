@@ -208,13 +208,13 @@ export const useUsersStore = defineStore("users", () => {
     ihashsSilentIgnoredByMe.value[ihash] = isActive;
   };
   const setLogExcluded = (ihash: string | undefined | null, isActive: boolean) => {
-    if (!ihash) {
+    if (ihash == null) {
       return;
     }
     ihashsLogExcludedByMe.value[ihash] = isActive;
   };
   const toggleLogExcluded = (ihash: string | undefined | null) => {
-    if (!ihash) {
+    if (ihash == null) {
       return;
     }
     ihashsLogExcludedByMe.value[ihash] = !(ihashsLogExcludedByMe.value[ihash] ?? false);

@@ -55,7 +55,7 @@ export const useLogStore = defineStore("log", () => {
   const visibleLogMessages = computed(() => {
     const usersStore = useUsersStore();
     const isExcludedByMap = (ihash: string | undefined, map: Record<string, boolean>) => {
-      if (!ihash) {
+      if (ihash == null) {
         return false;
       }
       return map[ihash] ?? false;
