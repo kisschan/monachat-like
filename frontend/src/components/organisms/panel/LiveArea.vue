@@ -183,7 +183,6 @@ import { useLiveRoomsStore } from "@/stores/liveRooms";
 import { useLiveVideoStore } from "@/stores/liveVideo";
 import { useUIStore } from "@/stores/ui";
 import { fetchLiveStatus, startLive, stopLive } from "@/api/liveAPI";
-import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
   getCameraStream,
   listVideoInputs,
@@ -206,11 +205,7 @@ import {
   type WhipPublishHandle,
   type PublishMode,
 } from "@/webrtc/whipClient";
-import {
-  WhepRequestError,
-  startWhepSubscribe,
-  type WhepSubscribeHandle,
-} from "@/webrtc/whepClient";
+import { useLivePlaybackController } from "@/composables/useLivePlaybackController";
 import PrimeButton from "primevue/button";
 import Accordion from "primevue/accordion";
 import AccordionPanel from "primevue/accordionpanel";
@@ -257,6 +252,8 @@ const myId = computed(() => userStore.myID);
 // =====================
 const liveRoomsStore = useLiveRoomsStore();
 const liveVideoStore = useLiveVideoStore();
+const playbackController = useLivePlaybackController();
+const { state: playbackState } = playbackController;
 const {
   visibleLiveRooms,
   hasLoadedOnce,
@@ -302,11 +299,7 @@ const abortInFlightPublishStart = () => {
 };
 
 // 視聴者側
-const isBusyWatch = ref(false);
-const isStartingWatch = ref(false);
-const watchSubscribeInFlight = ref<Promise<WhepSubscribeHandle> | null>(null);
-const subscribeHandle = ref<WhepSubscribeHandle | null>(null);
-const { videoElement } = storeToRefs(liveVideoStore);
+const { mediaElement } = storeToRefs(liveVideoStore);
 const LIVE_WINDOW_WAIT_TIMEOUT_MS = 5000;
 const watchMode = ref<"av" | "audio">("av");
 const isWatchAudioOnly = computed(() => {
@@ -579,12 +572,11 @@ const canStartPublish = computed(() => {
 const canStartWatch = computed(() => {
   return (
     liveEnabled.value &&
-    !isBusyWatch.value &&
-    !isStartingWatch.value &&
+    !playbackState.isBusy &&
     isLive.value &&
     !!roomId.value &&
     !!token.value &&
-    subscribeHandle.value === null
+    !playbackState.isPlaying
   );
 });
 
@@ -599,7 +591,7 @@ const canStopPublish = computed(() => {
 });
 
 const canStopWatch = computed(() => {
-  return !isBusyWatch.value && subscribeHandle.value !== null;
+  return !playbackState.isBusy && playbackState.isPlaying;
 });
 
 const loadStatusFor = async (ctx: { roomId: string; token: string }) => {
@@ -1040,129 +1032,81 @@ const onClickStartWatch = async () => {
   const startRoomId = roomId.value;
   const startToken = token.value;
   if (!startRoomId || !startToken) return;
-  if (isStartingWatch.value) return;
+  if (playbackState.isBusy) return;
   if (!liveEnabled.value || !isLive.value) return;
-  if (isBusyWatch.value || subscribeHandle.value || watchSubscribeInFlight.value) return;
-  isStartingWatch.value = true;
-  let subscribePromise: Promise<WhepSubscribeHandle> | null = null;
+  if (playbackState.isPlaying) return;
 
-  try {
-    if (!videoElement.value) {
-      if (router.currentRoute.value.name !== "room") {
-        errorMessage.value = "LIVE窓を表示できる画面で視聴を開始してください。";
-        return;
-      }
-      uiStore.openLiveWindow();
-      await nextTick();
+  if (!mediaElement.value) {
+    if (router.currentRoute.value.name !== "room") {
+      errorMessage.value = "LIVE窓を表示できる画面で視聴を開始してください。";
+      return;
     }
-    if (!videoElement.value) {
-      const startRouteParam = String(router.currentRoute.value.params.id ?? "");
-      const hasVideoElement = await new Promise<boolean>((resolve) => {
-        let timeoutId: number | null = null;
-        const stopVideoWatch = watch(
-          videoElement,
-          (element) => {
-            if (element) {
-              cleanup();
-              resolve(true);
-            }
-          },
-          { flush: "post" },
-        );
-        const stopRouteWatch = watch(
-          () => [
-            router.currentRoute.value.name,
-            String(router.currentRoute.value.params.id ?? ""),
-            roomId.value,
-          ],
-          ([name, currentRouteParam, currentRoomId]) => {
-            if (name !== "room") {
-              cleanup();
-              resolve(false);
-              return;
-            }
-            if (currentRouteParam !== startRouteParam || currentRoomId !== startRoomId) {
-              cleanup();
-              resolve(false);
-            }
-          },
-        );
-        const cleanup = () => {
-          stopVideoWatch();
-          stopRouteWatch();
-          if (timeoutId) {
-            window.clearTimeout(timeoutId);
+    uiStore.openLiveWindow();
+    await nextTick();
+  }
+  if (!mediaElement.value) {
+    const startRouteParam = String(router.currentRoute.value.params.id ?? "");
+    const hasVideoElement = await new Promise<boolean>((resolve) => {
+      let timeoutId: number | null = null;
+      const stopVideoWatch = watch(
+        mediaElement,
+        (element) => {
+          if (element) {
+            cleanup();
+            resolve(true);
           }
-        };
-        timeoutId = window.setTimeout(() => {
-          cleanup();
-          resolve(false);
-        }, LIVE_WINDOW_WAIT_TIMEOUT_MS);
-      });
-      if (!hasVideoElement) {
-        errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
-        return;
-      }
-    }
-    if (!videoElement.value) {
+        },
+        { flush: "post" },
+      );
+      const stopRouteWatch = watch(
+        () => [
+          router.currentRoute.value.name,
+          String(router.currentRoute.value.params.id ?? ""),
+          roomId.value,
+        ],
+        ([name, currentRouteParam, currentRoomId]) => {
+          if (name !== "room") {
+            cleanup();
+            resolve(false);
+            return;
+          }
+          if (currentRouteParam !== startRouteParam || currentRoomId !== startRoomId) {
+            cleanup();
+            resolve(false);
+          }
+        },
+      );
+      const cleanup = () => {
+        stopVideoWatch();
+        stopRouteWatch();
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+      };
+      timeoutId = window.setTimeout(() => {
+        cleanup();
+        resolve(false);
+      }, LIVE_WINDOW_WAIT_TIMEOUT_MS);
+    });
+    if (!hasVideoElement) {
       errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
       return;
     }
-    if (subscribeHandle.value || watchSubscribeInFlight.value) {
-      return;
-    }
+  }
+  if (!mediaElement.value) {
+    errorMessage.value = "LIVE窓を開いてから視聴を開始してください。";
+    return;
+  }
 
-    errorMessage.value = null;
-    isBusyWatch.value = true;
-
-    const config = await fetchWebrtcConfig(startRoomId, startToken);
-    if (!config.whepUrl) {
-      throw new Error("whep-url-missing");
-    }
-
-    subscribePromise = startWhepSubscribe(config.whepUrl, videoElement.value, {
-      audioOnly: isWatchAudioOnly.value,
-    });
-    watchSubscribeInFlight.value = subscribePromise;
-    const handle = await subscribePromise;
-    if (subscribeHandle.value) {
-      await handle.stop().catch(() => {});
-    } else {
-      subscribeHandle.value = handle;
-    }
-  } catch (e: unknown) {
-    if (axios.isAxiosError(e)) {
-      const status = e.response?.status;
-      const code = e.response?.data?.error;
-
-      if (status === 404 || status === 410) {
-        errorMessage.value = "配信が終了しています。ページを再読み込みしてください。";
-      } else if (status === 403 && code === "live-disabled") {
-        errorMessage.value = "この部屋では配信機能は利用できません。";
-      } else {
-        errorMessage.value = "視聴開始に失敗しました。";
-      }
-    } else if (e instanceof WhepRequestError) {
-      if (e.status === 404 || e.status === 410) {
-        errorMessage.value = "配信が終了しています。ページを再読み込みしてください。";
-      } else if (e.status === 403) {
-        errorMessage.value = `視聴の認可に失敗しました。もう一度お試しください。(status=${e.status})`;
-      } else if (e.status === 401) {
-        errorMessage.value = "視聴権限がありません。ページを再読み込みしてください。";
-      } else if (e.status === 400) {
-        errorMessage.value = "視聴開始に失敗しました。（接続に問題があります）";
-      } else {
-        errorMessage.value = `視聴開始に失敗しました。(status=${e.status})`;
-      }
-    } else {
-      errorMessage.value = "視聴開始に失敗しました。";
-    }
-  } finally {
-    if (watchSubscribeInFlight.value === subscribePromise) {
-      watchSubscribeInFlight.value = null;
-    }
-    isBusyWatch.value = false;
-    isStartingWatch.value = false;
+  errorMessage.value = null;
+  await playbackController.start({
+    roomId: startRoomId,
+    token: startToken,
+    mediaElement: mediaElement.value,
+    audioOnly: isWatchAudioOnly.value,
+  });
+  if (playbackState.error) {
+    errorMessage.value = playbackState.error;
   }
 };
 
@@ -1171,17 +1115,16 @@ const onClickStopWatch = async () => {
   if (!canStopWatch.value) return;
 
   errorMessage.value = null;
-  isBusyWatch.value = true;
 
   try {
-    if (subscribeHandle.value) {
-      await subscribeHandle.value.stop();
-      subscribeHandle.value = null;
+    await playbackController.stop();
+    if (playbackState.error) {
+      errorMessage.value = playbackState.error;
     }
-  } catch (e: unknown) {
-    errorMessage.value = "視聴停止に失敗しました。";
   } finally {
-    isBusyWatch.value = false;
+    if (playbackState.error) {
+      errorMessage.value = playbackState.error;
+    }
   }
 };
 
@@ -1204,9 +1147,8 @@ const handleLiveStatusChange = (payload: LiveStatusChangePayload) => {
   }
 
   // 視聴側
-  if (!payload.isLive && subscribeHandle.value) {
-    subscribeHandle.value.stop().catch(() => {});
-    subscribeHandle.value = null;
+  if (!payload.isLive) {
+    playbackController.stop().catch(() => {});
   }
 
   // 配信側（サーバから isLive=false が飛んできたら止める）
@@ -1261,10 +1203,7 @@ watch(
     }
 
     // 視聴停止
-    if (subscribeHandle.value) {
-      await subscribeHandle.value.stop().catch(() => {});
-      subscribeHandle.value = null;
-    }
+    await playbackController.stop().catch(() => {});
 
     // 表示状態をリセット
     isLive.value = false;
@@ -1290,6 +1229,14 @@ watch(isAudioOnlyLive, (val) => {
     watchMode.value = "audio";
   }
 });
+
+watch(
+  watchMode,
+  (mode) => {
+    liveVideoStore.setUiKind(mode === "audio" ? "audio" : "video");
+  },
+  { immediate: true },
+);
 
 watch(
   publishMode,
@@ -1348,10 +1295,7 @@ onBeforeUnmount(() => {
 
   stopPreviewStream();
 
-  if (subscribeHandle.value) {
-    subscribeHandle.value.stop().catch(() => {});
-    subscribeHandle.value = null;
-  }
+  void playbackController.stop();
 });
 </script>
 

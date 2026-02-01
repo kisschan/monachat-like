@@ -34,7 +34,12 @@
         <div class="log-row"><SpanText :text="`${log.head}${log.content}${log.foot}`" /></div>
       </div>
     </div>
-    <LiveWindowOverlay v-if="shouldRenderLiveOverlay" :container="root" @close="closeLiveWindow" />
+    <LivePlayerHost
+      v-if="shouldRenderLiveOverlay"
+      :container="root"
+      :ui-kind="livePlayerUiKind"
+      @close="closeLiveWindow"
+    />
     <img
       v-if="currentRoom != undefined"
       class="room-img"
@@ -134,7 +139,7 @@ import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import InvertButton from "@/components/molecules/InvertButton.vue";
 import SubmittableField from "@/components/molecules/SubmittableField.vue";
 import ChatCharacter from "@/components/organisms/ChatCharacter.vue";
-import LiveWindowOverlay from "@/components/organisms/LiveWindowOverlay.vue";
+import LivePlayerHost from "@/components/organisms/LivePlayerHost.vue";
 import { useUIStore } from "@/stores/ui";
 import { useUserStore } from "@/stores/user";
 import { storeToRefs } from "pinia";
@@ -143,12 +148,14 @@ import { useRoomStore } from "@/stores/room";
 import { useUsersStore } from "@/stores/users";
 import { useLogStore } from "@/stores/log";
 import { handleLongPressOnUser } from "@/services/longPressAction";
+import { useLiveVideoStore } from "@/stores/liveVideo";
 
 const userStore = useUserStore();
 const usersStore = useUsersStore();
 const roomStore = useRoomStore();
 const logStore = useLogStore();
 const uiStore = useUIStore();
+const liveVideoStore = useLiveVideoStore();
 const settingStore = useSettingStore();
 const router = useRouter();
 const route = useRoute();
@@ -177,6 +184,7 @@ const { disconnected, myID } = storeToRefs(userStore);
 const { chatMessages, visibleUsers } = storeToRefs(usersStore);
 const { visibleLogMessages } = storeToRefs(logStore);
 const { isLogVisible, isLiveVisible, panelBackgroundColor } = storeToRefs(uiStore);
+const { uiKind: livePlayerUiKind } = storeToRefs(liveVideoStore);
 const selectedVolume = computed({
   get: () => settingStore.selectedVolume,
   set: (value) => settingStore.updateSelectedVolume(value),
