@@ -22,16 +22,18 @@ describe("LivePlayerHost", () => {
     });
 
   it("renders audio-only overlay without video UI", () => {
+    expect.hasAssertions();
     const wrapper = mountHost("audio");
 
     expect(wrapper.find("video").exists()).toBe(false);
     expect(wrapper.find('[aria-label="ライブ窓サイズ"]').exists()).toBe(false);
 
     const buttonLabels = wrapper.findAll("button").map((button) => button.text());
-    expect(buttonLabels).toEqual(expect.arrayContaining(["再生", "停止"]));
+    expect(buttonLabels).toStrictEqual(expect.arrayContaining(["再生", "停止"]));
   });
 
   it("renders video overlay when uiKind=video", () => {
+    expect.hasAssertions();
     const wrapper = mountHost("video");
 
     expect(wrapper.find("video").exists()).toBe(true);

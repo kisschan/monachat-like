@@ -15,16 +15,30 @@
         :disabled="isBusy || !isPlaying"
         @click="onClickStop"
       />
+      <SimpleButton
+        v-if="isBlocked"
+        class="audio-watch-overlay__button audio-watch-overlay__button--manual"
+        title="手動再生"
+        :text-size="14"
+        @click="onClickManualPlay"
+      />
     </div>
-    <p v-if="state.error" class="audio-watch-overlay__status">
-      {{ state.error }}
+    <p v-if="statusMessage" class="audio-watch-overlay__status">
+      {{ statusMessage }}
     </p>
-    <audio ref="audioRef" class="audio-watch-overlay__audio" autoplay playsinline></audio>
+    <audio
+      ref="audioRef"
+      class="audio-watch-overlay__audio"
+      :class="{ 'audio-watch-overlay__audio--blocked': isBlocked }"
+      :controls="isBlocked"
+      autoplay
+      playsinline
+    ></audio>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import { useLivePlaybackController } from "@/composables/useLivePlaybackController";
 import { useLiveVideoStore } from "@/stores/liveVideo";
@@ -34,15 +48,72 @@ const liveVideoStore = useLiveVideoStore();
 const userStore = useUserStore();
 const { state, start, stop } = useLivePlaybackController();
 const audioRef = ref<HTMLAudioElement | null>(null);
+const playbackPhase = ref<"idle" | "playing" | "blocked">("idle");
+const autoPlayAttempted = ref(false);
+const autoPlayArmed = ref(false);
+const isDisposed = ref(false);
 
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
 const isPlaying = computed(() => state.isPlaying);
 const isBusy = computed(() => state.isBusy);
 const canStart = computed(() => !!roomId.value && !!token.value && !!audioRef.value);
+const isBlocked = computed(() => playbackPhase.value === "blocked");
+const statusMessage = computed(() => {
+  if (state.error) {
+    return state.error;
+  }
+  if (isBlocked.value) {
+    return "自動再生がブロックされました。手動で再生してください。";
+  }
+  return null;
+});
+
+const handlePlayable = () => {
+  void attemptAutoPlay();
+};
+
+const resetAutoPlay = () => {
+  autoPlayAttempted.value = false;
+  autoPlayArmed.value = false;
+  playbackPhase.value = "idle";
+};
+
+const attemptAutoPlay = async () => {
+  if (isDisposed.value || autoPlayAttempted.value || !autoPlayArmed.value) return;
+  const audio = audioRef.value;
+  if (!audio) return;
+
+  autoPlayAttempted.value = true;
+  try {
+    await audio.play();
+    playbackPhase.value = "playing";
+  } catch {
+    playbackPhase.value = "blocked";
+  }
+};
+
+const onClickManualPlay = () => {
+  const audio = audioRef.value;
+  if (!audio || isDisposed.value) return;
+
+  const playPromise = audio.play();
+  if (!playPromise) return;
+
+  playPromise
+    .then(() => {
+      playbackPhase.value = "playing";
+    })
+    .catch(() => {
+      playbackPhase.value = "blocked";
+    });
+};
 
 const onClickPlay = async () => {
   if (!canStart.value || !audioRef.value) return;
+  playbackPhase.value = "idle";
+  autoPlayAttempted.value = false;
+  autoPlayArmed.value = true;
   await start({
     roomId: roomId.value,
     token: token.value,
@@ -52,14 +123,37 @@ const onClickPlay = async () => {
 };
 
 const onClickStop = async () => {
+  resetAutoPlay();
   await stop();
 };
 
 onMounted(() => {
   liveVideoStore.setAudioElement(audioRef.value);
+
+  const audio = audioRef.value;
+  if (!audio) return;
+
+  audio.addEventListener("loadedmetadata", handlePlayable);
+  audio.addEventListener("canplay", handlePlayable);
 });
 
+watch(
+  () => state.isPlaying,
+  (playing) => {
+    if (!playing) {
+      resetAutoPlay();
+    }
+  },
+);
+
 onBeforeUnmount(() => {
+  isDisposed.value = true;
+  resetAutoPlay();
+  const audio = audioRef.value;
+  if (audio) {
+    audio.removeEventListener("loadedmetadata", handlePlayable);
+    audio.removeEventListener("canplay", handlePlayable);
+  }
   liveVideoStore.setAudioElement(null);
   void stop();
 });
@@ -91,6 +185,10 @@ onBeforeUnmount(() => {
   height: 32px;
 }
 
+.audio-watch-overlay__button--manual {
+  grid-column: 1 / -1;
+}
+
 .audio-watch-overlay__status {
   margin: 0;
   font-size: 0.8rem;
@@ -100,5 +198,10 @@ onBeforeUnmount(() => {
   width: 0;
   height: 0;
   overflow: hidden;
+}
+
+.audio-watch-overlay__audio--blocked {
+  width: 100%;
+  height: 32px;
 }
 </style>

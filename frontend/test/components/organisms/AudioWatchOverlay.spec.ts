@@ -42,6 +42,10 @@ describe("AudioWatchOverlay", () => {
     controller.state.isBusy = false;
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("sets isPlaying true after clicking play", async () => {
     const wrapper = mountOverlay();
     const controller = useLivePlaybackController();
@@ -55,8 +59,73 @@ describe("AudioWatchOverlay", () => {
     }
 
     await playButton.trigger("click");
+    await flushPromises();
 
     expect(controller.state.isPlaying).toBe(true);
+  });
+
+  it("shows manual play button when autoplay is blocked", async () => {
+    const playMock = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValueOnce({ name: "NotAllowedError" });
+    const wrapper = mountOverlay();
+
+    const playButton = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "再生");
+
+    if (!playButton) {
+      throw new Error("play button not found");
+    }
+
+    await playButton.trigger("click");
+
+    const audioElement = wrapper.find("audio").element as HTMLAudioElement;
+    audioElement.srcObject = {} as MediaStream;
+    audioElement.dispatchEvent(new Event("loadedmetadata"));
+
+    await flushPromises();
+
+    expect(playMock).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("手動再生");
+  });
+
+  it("calls play again when manual play is clicked", async () => {
+    const playMock = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValueOnce({ name: "NotAllowedError" })
+      .mockResolvedValueOnce(undefined);
+    const wrapper = mountOverlay();
+
+    const playButton = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "再生");
+
+    if (!playButton) {
+      throw new Error("play button not found");
+    }
+
+    await playButton.trigger("click");
+
+    const audioElement = wrapper.find("audio").element as HTMLAudioElement;
+    audioElement.srcObject = {} as MediaStream;
+    audioElement.dispatchEvent(new Event("loadedmetadata"));
+
+    await flushPromises();
+
+    const manualButton = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "手動再生");
+
+    if (!manualButton) {
+      throw new Error("manual play button not found");
+    }
+
+    await manualButton.trigger("click");
+    await flushPromises();
+
+    expect(playMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).not.toContain("手動再生");
   });
 
   it("sets isPlaying false after clicking stop", async () => {
