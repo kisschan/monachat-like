@@ -171,36 +171,43 @@ onBeforeUnmount(() => {
 <style scoped>
 .audio-watch-overlay {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  right: var(--live-window-padding, 12px);
+  bottom: var(--live-window-padding, 12px);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.65);
-  color: #fff;
-  min-width: 120px;
+  padding: var(--live-window-padding, 12px);
+  border-radius: var(--live-window-radius, 12px);
+  background: var(--live-window-surface-muted, #f4f4f4);
+  border: var(--live-window-border, 1px solid rgba(0, 0, 0, 0.12));
+  box-shadow: var(--live-window-shadow, 0 12px 28px rgba(0, 0, 0, 0.15));
+  color: rgba(0, 0, 0, 0.75);
+  min-width: 128px;
   z-index: 2;
 }
 
 .audio-watch-overlay__controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, auto);
+  justify-content: end;
+  gap: var(--live-window-control-gap, 6px);
 }
 
 .audio-watch-overlay__button {
-  height: 32px;
+  width: 32px;
+  height: var(--live-window-control-height, 28px);
+  border-radius: var(--live-window-control-radius, 8px);
 }
 
 .audio-watch-overlay__button--manual {
   grid-column: 1 / -1;
+  width: 100%;
 }
 
 .audio-watch-overlay__status {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .audio-watch-overlay__audio {
@@ -211,6 +218,6 @@ onBeforeUnmount(() => {
 
 .audio-watch-overlay__audio--blocked {
   width: 100%;
-  height: 32px;
+  height: var(--live-window-control-height, 28px);
 }
 </style>

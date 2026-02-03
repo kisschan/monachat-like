@@ -582,18 +582,33 @@ watch(
 
 <style scoped>
 .live-window {
+  --live-window-width: min(520px, 90vw);
+  --live-window-min-width: 320px;
+  --live-window-min-height: 180px;
+  --live-window-padding: 12px;
+  --live-window-radius: 12px;
+  --live-window-border: 1px solid rgba(0, 0, 0, 0.12);
+  --live-window-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
+  --live-window-bg: #fff;
+  --live-window-surface-muted: #f4f4f4;
+  --live-window-control-height: 28px;
+  --live-window-control-radius: 8px;
+  --live-window-control-border: 1px solid rgba(0, 0, 0, 0.2);
+  --live-window-control-bg: #f8f8f8;
+  --live-window-control-gap: 6px;
+
   position: absolute;
   top: 0;
   left: 0;
-  width: min(520px, 90vw);
-  min-width: 320px;
-  min-height: 180px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
+  width: var(--live-window-width);
+  min-width: var(--live-window-min-width);
+  min-height: var(--live-window-min-height);
+  background: var(--live-window-bg);
+  border: var(--live-window-border);
+  border-radius: var(--live-window-radius);
+  box-shadow: var(--live-window-shadow);
   z-index: 30;
-  padding: 12px;
+  padding: var(--live-window-padding);
   pointer-events: auto;
   display: flex;
   flex-direction: column;
@@ -618,11 +633,11 @@ watch(
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  background: #f8f8f8;
+  width: var(--live-window-control-height);
+  height: var(--live-window-control-height);
+  border-radius: var(--live-window-control-radius);
+  border: var(--live-window-control-border);
+  background: var(--live-window-control-bg);
   cursor: grab;
   touch-action: none;
 }
@@ -661,7 +676,8 @@ watch(
 
 .live-window__close {
   width: 70px;
-  height: 28px;
+  height: var(--live-window-control-height);
+  border-radius: var(--live-window-control-radius);
 }
 
 .live-window__body {
@@ -689,12 +705,13 @@ watch(
 /* サイズ切替ボタン（デフォルトは非表示） */
 .live-window__size-controls {
   display: none;
-  gap: 6px;
+  gap: var(--live-window-control-gap);
   align-items: center;
 }
 .live-window__size-btn {
   width: 32px;
-  height: 28px;
+  height: var(--live-window-control-height);
+  border-radius: var(--live-window-control-radius);
 }
 
 /* タッチ端末はさらに押しやすく */
