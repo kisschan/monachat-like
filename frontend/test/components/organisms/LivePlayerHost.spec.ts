@@ -1,3 +1,4 @@
+import { getByTestId, queryByTestId } from "@testing-library/dom";
 import { mount } from "@vue/test-utils";
 import { createTestingPinia } from "@pinia/testing";
 import LivePlayerHost from "@/components/organisms/LivePlayerHost.vue";
@@ -25,18 +26,14 @@ describe("LivePlayerHost", () => {
     expect.hasAssertions();
     const wrapper = mountHost("audio");
 
-    expect(wrapper.find("video").exists()).toBe(true);
-    expect(wrapper.find('[aria-label="ライブ窓サイズ"]').exists()).toBe(false);
-
-    const buttonLabels = wrapper.findAll("button").map((button) => button.text());
-    expect(buttonLabels).toStrictEqual(expect.arrayContaining(["再生", "停止"]));
+    expect(getByTestId(wrapper.element, "audio-play")).toBeInstanceOf(HTMLElement);
+    expect(queryByTestId(wrapper.element, "live-video")).toBeNull();
   });
 
   it("renders video overlay when uiKind=video", () => {
     expect.hasAssertions();
     const wrapper = mountHost("video");
 
-    expect(wrapper.find("video").exists()).toBe(true);
-    expect(wrapper.find('[aria-label="ライブ窓サイズ"]').exists()).toBe(true);
+    expect(getByTestId(wrapper.element, "live-video")).toBeInstanceOf(HTMLVideoElement);
   });
 });

@@ -1,7 +1,15 @@
 <template>
   <div class="live-video-pane">
     <div class="live-video-pane__preview">
-      <video ref="videoRef" class="live-video-pane__video" autoplay playsinline controls></video>
+      <video
+        v-if="!props.isAudioOnly"
+        ref="videoRef"
+        class="live-video-pane__video"
+        data-testid="live-video"
+        autoplay
+        playsinline
+        controls
+      ></video>
       <slot name="overlay"></slot>
     </div>
     <p v-if="props.isAudioOnly" class="live-video-pane__hint">

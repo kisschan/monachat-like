@@ -1,3 +1,4 @@
+import { fireEvent, getByRole } from "@testing-library/dom";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createTestingPinia } from "@pinia/testing";
 import AudioWatchOverlay from "@/components/organisms/AudioWatchOverlay.vue";
@@ -51,13 +52,10 @@ describe("AudioWatchOverlay", () => {
     const wrapper = mountOverlay();
     const controller = useLivePlaybackController();
 
-    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
+    await flushPromises();
 
-    if (!playButton) {
-      throw new Error("play button not found");
-    }
-
-    await playButton.trigger("click");
+    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    await fireEvent.click(playButton);
     await flushPromises();
 
     expect(controller.state.isPlaying).toBe(true);
@@ -70,13 +68,10 @@ describe("AudioWatchOverlay", () => {
       .mockRejectedValueOnce({ name: "NotAllowedError" });
     const wrapper = mountOverlay();
 
-    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
+    await flushPromises();
 
-    if (!playButton) {
-      throw new Error("play button not found");
-    }
-
-    await playButton.trigger("click");
+    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
     audioElement.srcObject = {} as MediaStream;
@@ -96,13 +91,10 @@ describe("AudioWatchOverlay", () => {
       .mockResolvedValueOnce(undefined);
     const wrapper = mountOverlay();
 
-    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
+    await flushPromises();
 
-    if (!playButton) {
-      throw new Error("play button not found");
-    }
-
-    await playButton.trigger("click");
+    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
     audioElement.srcObject = {} as MediaStream;
@@ -110,13 +102,8 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const manualButton = wrapper.findAll("button").find((button) => button.text() === "手動再生");
-
-    if (!manualButton) {
-      throw new Error("manual play button not found");
-    }
-
-    await manualButton.trigger("click");
+    const manualButton = getByRole(wrapper.element, "button", { name: /manual play/i });
+    await fireEvent.click(manualButton);
     await flushPromises();
 
     expect(playMock).toHaveBeenCalledTimes(2);
@@ -128,15 +115,15 @@ describe("AudioWatchOverlay", () => {
     const wrapper = mountOverlay();
     const controller = useLivePlaybackController();
 
-    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
-    const stopButton = wrapper.findAll("button").find((button) => button.text() === "停止");
+    await flushPromises();
 
-    if (!playButton || !stopButton) {
-      throw new Error("control buttons not found");
-    }
+    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    const stopButton = getByRole(wrapper.element, "button", { name: /stop/i });
 
-    await playButton.trigger("click");
-    await stopButton.trigger("click");
+    await fireEvent.click(playButton);
+    await flushPromises();
+    await fireEvent.click(stopButton);
+    await flushPromises();
 
     expect(controller.state.isPlaying).toBe(false);
   });
@@ -154,13 +141,10 @@ describe("AudioWatchOverlay", () => {
     const wrapper = mountOverlay();
     const controller = useLivePlaybackController();
 
-    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
+    await flushPromises();
 
-    if (!playButton) {
-      throw new Error("play button not found");
-    }
-
-    await playButton.trigger("click");
+    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    await fireEvent.click(playButton);
     wrapper.unmount();
     await flushPromises();
 
