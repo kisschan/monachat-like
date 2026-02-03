@@ -1,6 +1,9 @@
 <template>
   <div class="live-video-pane">
-    <video ref="videoRef" class="live-video-pane__video" autoplay playsinline controls></video>
+    <div class="live-video-pane__preview">
+      <video ref="videoRef" class="live-video-pane__video" autoplay playsinline controls></video>
+      <slot name="overlay"></slot>
+    </div>
     <p v-if="props.isAudioOnly" class="live-video-pane__hint">
       現在の配信は音声のみです。視聴は音声のみとなります。
     </p>
@@ -42,10 +45,15 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.live-video-pane__preview {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
 .live-video-pane__video {
   width: 100%;
   height: 100%;
-  flex: 1;
   min-height: 0;
   object-fit: contain;
   border-radius: 12px;

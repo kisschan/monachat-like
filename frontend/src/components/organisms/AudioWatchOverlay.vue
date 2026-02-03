@@ -3,15 +3,21 @@
     <div class="audio-watch-overlay__controls">
       <SimpleButton
         class="audio-watch-overlay__button"
-        title="再生"
-        :text-size="14"
+        title="▶"
+        title-attr="Play"
+        aria-label="Play"
+        data-testid="audio-play"
+        :text-size="16"
         :disabled="isBusy || !canStart"
         @click="onClickPlay"
       />
       <SimpleButton
         class="audio-watch-overlay__button"
-        title="停止"
-        :text-size="14"
+        title="■"
+        title-attr="Stop"
+        aria-label="Stop"
+        data-testid="audio-stop"
+        :text-size="16"
         :disabled="isBusy || !isPlaying"
         @click="onClickStop"
       />
@@ -19,6 +25,9 @@
         v-if="isBlocked"
         class="audio-watch-overlay__button audio-watch-overlay__button--manual"
         title="手動再生"
+        title-attr="Manual play"
+        aria-label="Manual play"
+        data-testid="audio-manual-play"
         :text-size="14"
         @click="onClickManualPlay"
       />
@@ -161,18 +170,18 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .audio-watch-overlay {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.7);
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.65);
   color: #fff;
-  min-width: 140px;
-  z-index: 20;
+  min-width: 120px;
+  z-index: 2;
 }
 
 .audio-watch-overlay__controls {

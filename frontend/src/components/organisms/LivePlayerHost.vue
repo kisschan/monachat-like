@@ -4,11 +4,16 @@
     :container="props.container"
     @close="emit('close')"
   />
-  <AudioWatchOverlay v-else />
+  <LiveWindowOverlay
+    v-else
+    :container="props.container"
+    is-audio-only
+    @close="emit('close')"
+  />
 </template>
 
 <script setup lang="ts">
-import AudioWatchOverlay from "@/components/organisms/AudioWatchOverlay.vue";
+import LiveWindowOverlay from "@/components/organisms/LiveWindowOverlay.vue";
 import VideoLiveOverlayAdapter from "@/components/organisms/VideoLiveOverlayAdapter.vue";
 import type { LivePlayerUiKind } from "@/stores/liveVideo";
 

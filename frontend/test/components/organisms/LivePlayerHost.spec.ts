@@ -25,7 +25,7 @@ describe("LivePlayerHost", () => {
     expect.hasAssertions();
     const wrapper = mountHost("audio");
 
-    expect(wrapper.find("video").exists()).toBe(false);
+    expect(wrapper.find("video").exists()).toBe(true);
     expect(wrapper.find('[aria-label="ライブ窓サイズ"]').exists()).toBe(false);
 
     const buttonLabels = wrapper.findAll("button").map((button) => button.text());

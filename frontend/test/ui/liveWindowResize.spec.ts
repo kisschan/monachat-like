@@ -3,6 +3,7 @@ import { resizeFromLeftAnchored } from "@/ui/liveWindowPosition";
 
 describe("resizeFromLeftAnchored", () => {
   it("updates x alongside width so the left handle stays under the pointer", () => {
+    expect.hasAssertions();
     const result = resizeFromLeftAnchored({
       pointerX: 500,
       startRight: 980,
@@ -11,10 +12,11 @@ describe("resizeFromLeftAnchored", () => {
       maxWidth: 900,
     });
 
-    expect(result).toEqual({ x: 500, width: 480 });
+    expect(result).toStrictEqual({ x: 500, width: 480 });
   });
 
   it("does not shrink below minWidth", () => {
+    expect.hasAssertions();
     const result = resizeFromLeftAnchored({
       pointerX: 800,
       startRight: 900,
@@ -23,10 +25,11 @@ describe("resizeFromLeftAnchored", () => {
       maxWidth: 900,
     });
 
-    expect(result).toEqual({ x: 580, width: 320 });
+    expect(result).toStrictEqual({ x: 580, width: 320 });
   });
 
   it("keeps the right edge inside the container", () => {
+    expect.hasAssertions();
     const result = resizeFromLeftAnchored({
       pointerX: 600,
       startRight: 1100,
@@ -36,10 +39,11 @@ describe("resizeFromLeftAnchored", () => {
     });
 
     expect(result.x + result.width).toBe(1000);
-    expect(result).toEqual({ x: 600, width: 400 });
+    expect(result).toStrictEqual({ x: 600, width: 400 });
   });
 
   it("does not allow x to go negative", () => {
+    expect.hasAssertions();
     const result = resizeFromLeftAnchored({
       pointerX: -50,
       startRight: 700,
@@ -48,11 +52,12 @@ describe("resizeFromLeftAnchored", () => {
       maxWidth: 520,
     });
 
-    expect(result).toEqual({ x: 180, width: 520 });
+    expect(result).toStrictEqual({ x: 180, width: 520 });
     expect(result.x).toBeGreaterThanOrEqual(0);
   });
 
   it("handles small containers by pinning width to the available size", () => {
+    expect.hasAssertions();
     const result = resizeFromLeftAnchored({
       pointerX: 40,
       startRight: 280,
@@ -61,10 +66,11 @@ describe("resizeFromLeftAnchored", () => {
       maxWidth: 520,
     });
 
-    expect(result).toEqual({ x: 0, width: 280 });
+    expect(result).toStrictEqual({ x: 0, width: 280 });
   });
 
   it("respects maxWidth when the pointer moves too far left", () => {
+    expect.hasAssertions();
     const result = resizeFromLeftAnchored({
       pointerX: 0,
       startRight: 900,
@@ -73,6 +79,6 @@ describe("resizeFromLeftAnchored", () => {
       maxWidth: 400,
     });
 
-    expect(result).toEqual({ x: 500, width: 400 });
+    expect(result).toStrictEqual({ x: 500, width: 400 });
   });
 });

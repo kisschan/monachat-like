@@ -2,6 +2,8 @@
   <button
     :class="{ dark: shouldBeDark, light: !shouldBeDark }"
     :disabled="disabled"
+    :aria-label="ariaLabel ?? title"
+    :title="titleAttr ?? title"
     @click.prevent="onClick"
   >
     <SpanText :text="title" :size="textSize" :is-dark="shouldBeDark" />
@@ -19,8 +21,16 @@ const props = withDefaults(
     disabled?: boolean;
     isDark?: boolean;
     textSize?: number;
+    ariaLabel?: string;
+    titleAttr?: string;
   }>(),
-  { disabled: undefined, isDark: undefined, textSize: 20 },
+  {
+    disabled: undefined,
+    isDark: undefined,
+    textSize: 20,
+    ariaLabel: undefined,
+    titleAttr: undefined,
+  },
 );
 // TODO: 適切なEvent型を探してくる
 const emit = defineEmits<{ (e: "click", event: Event & { shiftKey: boolean }): void }>();

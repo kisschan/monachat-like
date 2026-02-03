@@ -62,7 +62,11 @@
       <SimpleButton title="閉じる" class="live-window__close" :text-size="14" @click="close" />
     </header>
     <div class="live-window__body">
-      <LiveVideoPane :is-audio-only="props.isAudioOnly" @video-ready="onVideoReady" />
+      <LiveVideoPane :is-audio-only="props.isAudioOnly" @video-ready="onVideoReady">
+        <template v-if="props.isAudioOnly" #overlay>
+          <AudioWatchOverlay />
+        </template>
+      </LiveVideoPane>
     </div>
     <div
       ref="resizeHandleRef"
@@ -76,6 +80,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SimpleButton from "@/components/atoms/SimpleButton.vue";
+import AudioWatchOverlay from "@/components/organisms/AudioWatchOverlay.vue";
 import LiveVideoPane from "@/components/organisms/LiveVideoPane.vue";
 import { useLiveVideoStore } from "@/stores/liveVideo";
 import { clamp, computeBounds, pctToPx, pxToPct, resizeFromLeftAnchored } from "@/ui/liveWindowPosition";

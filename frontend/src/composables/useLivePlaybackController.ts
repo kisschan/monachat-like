@@ -10,7 +10,7 @@ import {
 export type LivePlaybackStartArgs = {
   roomId: string;
   token: string;
-  mediaElement: HTMLMediaElement;
+  mediaElement: HTMLMediaElement | null;
   audioOnly: boolean;
 };
 
@@ -67,8 +67,13 @@ const stopHandleSafely = async (handle: WhepSubscribeHandle) => {
 
 export const useLivePlaybackController = () => {
   const start = async (args: LivePlaybackStartArgs) => {
-    if (state.isBusy || subscribeHandle.value || watchSubscribeInFlight.value) return;
-    if (!args.roomId || !args.token || !args.mediaElement) return;
+    if (
+      state.isBusy ||
+      subscribeHandle.value !== null ||
+      watchSubscribeInFlight.value !== null
+    )
+      return;
+    if (!args.roomId || !args.token || args.mediaElement === null) return;
 
     state.isBusy = true;
     state.error = null;
@@ -94,7 +99,7 @@ export const useLivePlaybackController = () => {
         return;
       }
 
-      if (subscribeHandle.value) {
+      if (subscribeHandle.value !== null) {
         await stopHandleSafely(handle);
       } else {
         subscribeHandle.value = handle;
@@ -107,20 +112,20 @@ export const useLivePlaybackController = () => {
         watchSubscribeInFlight.value = null;
       }
       state.isBusy = false;
-      if (!subscribeHandle.value) {
+      if (subscribeHandle.value === null) {
         state.isPlaying = false;
       }
     }
   };
 
   const stop = async () => {
-    if (watchSubscribeInFlight.value && !subscribeHandle.value) {
+    if (watchSubscribeInFlight.value !== null && subscribeHandle.value === null) {
       pendingStop.value = true;
       state.isPlaying = false;
       return;
     }
 
-    if (!subscribeHandle.value) {
+    if (subscribeHandle.value === null) {
       pendingStop.value = false;
       state.isPlaying = false;
       return;

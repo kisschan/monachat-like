@@ -47,12 +47,11 @@ describe("AudioWatchOverlay", () => {
   });
 
   it("sets isPlaying true after clicking play", async () => {
+    expect.hasAssertions();
     const wrapper = mountOverlay();
     const controller = useLivePlaybackController();
 
-    const playButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "再生");
+    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
 
     if (!playButton) {
       throw new Error("play button not found");
@@ -65,14 +64,13 @@ describe("AudioWatchOverlay", () => {
   });
 
   it("shows manual play button when autoplay is blocked", async () => {
+    expect.hasAssertions();
     const playMock = vi
       .spyOn(HTMLMediaElement.prototype, "play")
       .mockRejectedValueOnce({ name: "NotAllowedError" });
     const wrapper = mountOverlay();
 
-    const playButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "再生");
+    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
 
     if (!playButton) {
       throw new Error("play button not found");
@@ -91,15 +89,14 @@ describe("AudioWatchOverlay", () => {
   });
 
   it("calls play again when manual play is clicked", async () => {
+    expect.hasAssertions();
     const playMock = vi
       .spyOn(HTMLMediaElement.prototype, "play")
       .mockRejectedValueOnce({ name: "NotAllowedError" })
       .mockResolvedValueOnce(undefined);
     const wrapper = mountOverlay();
 
-    const playButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "再生");
+    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
 
     if (!playButton) {
       throw new Error("play button not found");
@@ -113,9 +110,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const manualButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "手動再生");
+    const manualButton = wrapper.findAll("button").find((button) => button.text() === "手動再生");
 
     if (!manualButton) {
       throw new Error("manual play button not found");
@@ -129,15 +124,12 @@ describe("AudioWatchOverlay", () => {
   });
 
   it("sets isPlaying false after clicking stop", async () => {
+    expect.hasAssertions();
     const wrapper = mountOverlay();
     const controller = useLivePlaybackController();
 
-    const playButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "再生");
-    const stopButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "停止");
+    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
+    const stopButton = wrapper.findAll("button").find((button) => button.text() === "停止");
 
     if (!playButton || !stopButton) {
       throw new Error("control buttons not found");
@@ -150,6 +142,7 @@ describe("AudioWatchOverlay", () => {
   });
 
   it("allows stop to be called repeatedly", async () => {
+    expect.hasAssertions();
     const controller = useLivePlaybackController();
 
     await expect(controller.stop()).resolves.toBeUndefined();
@@ -157,12 +150,11 @@ describe("AudioWatchOverlay", () => {
   });
 
   it("stops playback on unmount", async () => {
+    expect.hasAssertions();
     const wrapper = mountOverlay();
     const controller = useLivePlaybackController();
 
-    const playButton = wrapper
-      .findAll("button")
-      .find((button) => button.text() === "再生");
+    const playButton = wrapper.findAll("button").find((button) => button.text() === "再生");
 
     if (!playButton) {
       throw new Error("play button not found");
