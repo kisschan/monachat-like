@@ -21,6 +21,21 @@ export type LeftResizeAnchoredResult = {
   width: number;
 };
 
+export type PositionPx = {
+  x: number;
+  y: number;
+};
+
+export type PositionPct = {
+  xPct: number;
+  yPct: number;
+};
+
+export type ClampedPosition = {
+  positionPx: PositionPx;
+  positionPct: PositionPct;
+};
+
 export const clamp = (value: number, min: number, max: number) => {
   if (max < min) {
     return min;
@@ -62,5 +77,19 @@ export const resizeFromLeftAnchored = ({
   return {
     x,
     width: rightEdge - x,
+  };
+};
+
+export const clampPosition = (next: PositionPx, bounds: Bounds): ClampedPosition => {
+  const clamped = {
+    x: clamp(next.x, 0, bounds.maxX),
+    y: clamp(next.y, 0, bounds.maxY),
+  };
+  return {
+    positionPx: clamped,
+    positionPct: {
+      xPct: pxToPct(clamped.x, bounds.maxX),
+      yPct: pxToPct(clamped.y, bounds.maxY),
+    },
   };
 };

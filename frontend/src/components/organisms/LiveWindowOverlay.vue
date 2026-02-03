@@ -83,7 +83,13 @@ import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import AudioWatchOverlay from "@/components/organisms/AudioWatchOverlay.vue";
 import LiveVideoPane from "@/components/organisms/LiveVideoPane.vue";
 import { useLiveVideoStore } from "@/stores/liveVideo";
-import { clamp, computeBounds, pctToPx, pxToPct, resizeFromLeftAnchored } from "@/ui/liveWindowPosition";
+import {
+  clamp,
+  clampPosition,
+  computeBounds,
+  pctToPx,
+  resizeFromLeftAnchored,
+} from "@/ui/liveWindowPosition";
 
 const props = withDefaults(defineProps<{ isAudioOnly?: boolean; container?: HTMLElement | null }>(), {
   isAudioOnly: false,
@@ -239,15 +245,9 @@ const applyPositionFromPct = () => {
 };
 
 const setPositionPx = (next: { x: number; y: number }) => {
-  const clamped = {
-    x: clamp(next.x, 0, bounds.value.maxX),
-    y: clamp(next.y, 0, bounds.value.maxY),
-  };
-  positionPx.value = clamped;
-  positionPct.value = {
-    xPct: pxToPct(clamped.x, bounds.value.maxX),
-    yPct: pxToPct(clamped.y, bounds.value.maxY),
-  };
+  const clamped = clampPosition(next, bounds.value);
+  positionPx.value = clamped.positionPx;
+  positionPct.value = clamped.positionPct;
 };
 
 const onResizePointerMove = (event: PointerEvent) => {

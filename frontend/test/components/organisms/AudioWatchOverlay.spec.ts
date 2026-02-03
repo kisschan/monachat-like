@@ -1,4 +1,4 @@
-import { fireEvent, getByRole } from "@testing-library/dom";
+import { fireEvent, getByTestId } from "@testing-library/dom";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createTestingPinia } from "@pinia/testing";
 import AudioWatchOverlay from "@/components/organisms/AudioWatchOverlay.vue";
@@ -54,7 +54,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    const playButton = getByTestId(wrapper.element, "audio-play");
     await fireEvent.click(playButton);
     await flushPromises();
 
@@ -70,7 +70,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    const playButton = getByTestId(wrapper.element, "audio-play");
     await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
@@ -93,7 +93,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    const playButton = getByTestId(wrapper.element, "audio-play");
     await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
@@ -102,7 +102,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const manualButton = getByRole(wrapper.element, "button", { name: /manual play/i });
+    const manualButton = getByTestId(wrapper.element, "audio-manual-play");
     await fireEvent.click(manualButton);
     await flushPromises();
 
@@ -117,8 +117,8 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
-    const stopButton = getByRole(wrapper.element, "button", { name: /stop/i });
+    const playButton = getByTestId(wrapper.element, "audio-play");
+    const stopButton = getByTestId(wrapper.element, "audio-stop");
 
     await fireEvent.click(playButton);
     await flushPromises();
@@ -143,11 +143,94 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByRole(wrapper.element, "button", { name: /play/i });
+    const playButton = getByTestId(wrapper.element, "audio-play");
     await fireEvent.click(playButton);
     wrapper.unmount();
     await flushPromises();
 
     expect(controller.state.isPlaying).toBe(false);
+  });
+
+  it("moves the mini overlay when dragging the handle", async () => {
+    expect.hasAssertions();
+    const wrapper = mountOverlay();
+
+    const overlay = wrapper.element as HTMLElement;
+    const handle = getByTestId(overlay, "audio-mini-handle");
+    const container = document.createElement("div");
+    container.style.width = "320px";
+    container.style.height = "200px";
+    document.body.appendChild(container);
+    container.appendChild(overlay);
+
+    Object.defineProperty(overlay, "offsetParent", { value: container });
+    container.getBoundingClientRect = () =>
+      ({
+        width: 320,
+        height: 200,
+        top: 0,
+        left: 0,
+        right: 320,
+        bottom: 200,
+      }) as DOMRect;
+    overlay.getBoundingClientRect = () =>
+      ({
+        width: 120,
+        height: 60,
+        top: 0,
+        left: 0,
+        right: 120,
+        bottom: 60,
+      }) as DOMRect;
+
+    await flushPromises();
+
+    await fireEvent.pointerDown(handle, { pointerId: 1, clientX: 200, clientY: 150 });
+    await fireEvent.pointerMove(document, { pointerId: 1, clientX: 180, clientY: 130 });
+    await fireEvent.pointerUp(document, { pointerId: 1, clientX: 180, clientY: 130 });
+
+    expect(overlay.getAttribute("style")).toContain("translate3d(168px, 108px, 0)");
+  });
+
+  it("does not start dragging from the play button", async () => {
+    expect.hasAssertions();
+    const wrapper = mountOverlay();
+
+    const overlay = wrapper.element as HTMLElement;
+    const playButton = getByTestId(overlay, "audio-play");
+    const container = document.createElement("div");
+    container.style.width = "320px";
+    container.style.height = "200px";
+    document.body.appendChild(container);
+    container.appendChild(overlay);
+
+    Object.defineProperty(overlay, "offsetParent", { value: container });
+    container.getBoundingClientRect = () =>
+      ({
+        width: 320,
+        height: 200,
+        top: 0,
+        left: 0,
+        right: 320,
+        bottom: 200,
+      }) as DOMRect;
+    overlay.getBoundingClientRect = () =>
+      ({
+        width: 120,
+        height: 60,
+        top: 0,
+        left: 0,
+        right: 120,
+        bottom: 60,
+      }) as DOMRect;
+
+    await flushPromises();
+
+    const initialStyle = overlay.getAttribute("style");
+    await fireEvent.pointerDown(playButton, { pointerId: 2, clientX: 200, clientY: 150 });
+    await fireEvent.pointerMove(document, { pointerId: 2, clientX: 100, clientY: 50 });
+    await fireEvent.pointerUp(document, { pointerId: 2, clientX: 100, clientY: 50 });
+
+    expect(overlay.getAttribute("style")).toBe(initialStyle);
   });
 });
