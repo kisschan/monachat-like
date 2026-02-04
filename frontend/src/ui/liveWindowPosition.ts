@@ -31,6 +31,13 @@ export type PositionPct = {
   yPct: number;
 };
 
+export type PositionInset = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
 export type ClampedPosition = {
   positionPx: PositionPx;
   positionPct: PositionPct;
@@ -91,5 +98,22 @@ export const clampPosition = (next: PositionPx, bounds: Bounds): ClampedPosition
       xPct: pxToPct(clamped.x, bounds.maxX),
       yPct: pxToPct(clamped.y, bounds.maxY),
     },
+  };
+};
+
+export const computeDefaultPosition = (
+  bounds: Bounds,
+  padding: number,
+  inset: Partial<PositionInset> = {},
+): PositionPx => {
+  const normalized = {
+    top: inset.top ?? 0,
+    right: inset.right ?? 0,
+    bottom: inset.bottom ?? 0,
+    left: inset.left ?? 0,
+  };
+  return {
+    x: clamp(bounds.maxX - padding - normalized.right, normalized.left, bounds.maxX),
+    y: clamp(bounds.maxY - padding - normalized.bottom, normalized.top, bounds.maxY),
   };
 };

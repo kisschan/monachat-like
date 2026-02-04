@@ -18,47 +18,49 @@
       >
         <span class="audio-watch-overlay__drag-icon" aria-hidden="true"></span>
       </button>
+      <div class="audio-watch-overlay__title">
+        <span class="audio-watch-overlay__badge">LIVE</span>
+        <span class="audio-watch-overlay__text">ライブ映像</span>
+      </div>
+      <div class="audio-watch-overlay__controls">
+        <SimpleButton
+          class="audio-watch-overlay__button"
+          title="▶"
+          title-attr="Play"
+          aria-label="play"
+          data-testid="live-audio-play"
+          :text-size="16"
+          :disabled="isBusy || !canStart"
+          @click="onClickPlay"
+        />
+        <SimpleButton
+          class="audio-watch-overlay__button"
+          title="■"
+          title-attr="Stop"
+          aria-label="stop"
+          data-testid="live-audio-stop"
+          :text-size="16"
+          :disabled="isBusy || !isPlaying"
+          @click="onClickStop"
+        />
+        <SimpleButton
+          class="audio-watch-overlay__button audio-watch-overlay__button--close"
+          title="×"
+          title-attr="閉じる"
+          aria-label="close"
+          data-testid="live-audio-close"
+          :text-size="16"
+          :disabled="isBusy"
+          @click="onClickClose"
+        />
+      </div>
     </div>
-    <div class="audio-watch-overlay__controls">
-      <SimpleButton
-        class="audio-watch-overlay__button"
-        title="▶"
-        title-attr="Play"
-        aria-label="Play"
-        data-testid="audio-play"
-        :text-size="16"
-        :disabled="isBusy || !canStart"
-        @click="onClickPlay"
-      />
-      <SimpleButton
-        class="audio-watch-overlay__button"
-        title="■"
-        title-attr="Stop"
-        aria-label="Stop"
-        data-testid="audio-stop"
-        :text-size="16"
-        :disabled="isBusy || !isPlaying"
-        @click="onClickStop"
-      />
-      <SimpleButton
-        v-if="isBlocked"
-        class="audio-watch-overlay__button audio-watch-overlay__button--manual"
-        title="手動再生"
-        title-attr="Manual play"
-        aria-label="Manual play"
-        data-testid="audio-manual-play"
-        :text-size="14"
-        @click="onClickManualPlay"
-      />
-    </div>
-    <p v-if="statusMessage" class="audio-watch-overlay__status">
+    <p class="audio-watch-overlay__status">
       {{ statusMessage }}
     </p>
     <audio
       ref="audioRef"
       class="audio-watch-overlay__audio"
-      :class="{ 'audio-watch-overlay__audio--blocked': isBlocked }"
-      :controls="isBlocked"
       autoplay
       playsinline
     ></audio>
@@ -68,10 +70,18 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SimpleButton from "@/components/atoms/SimpleButton.vue";
+import { useLiveWindowDrag } from "@/composables/useLiveWindowDrag";
 import { useLivePlaybackController } from "@/composables/useLivePlaybackController";
 import { useLiveVideoStore } from "@/stores/liveVideo";
 import { useUserStore } from "@/stores/user";
 import { clamp, clampPosition, computeBounds, pctToPx } from "@/ui/liveWindowPosition";
+
+const props = withDefaults(defineProps<{ container?: HTMLElement | null }>(), {
+  container: null,
+});
+const emit = defineEmits<{
+  (e: "close"): void;
+}>();
 
 const liveVideoStore = useLiveVideoStore();
 const userStore = useUserStore();
@@ -86,32 +96,33 @@ const isDisposed = ref(false);
 const bounds = ref({ maxX: 0, maxY: 0 });
 const positionPx = ref({ x: 0, y: 0 });
 const positionPct = ref({ xPct: 0, yPct: 0 });
-const dragPointerId = ref<number | null>(null);
-const dragStart = ref({ x: 0, y: 0, originX: 0, originY: 0 });
 const resizeObserver = ref<ResizeObserver | null>(null);
 
 const POSITION_STORAGE_KEY = "audio-mini-position";
 const DEFAULT_PADDING = 12;
-const CAPTURE_OPTS: EventListenerOptions = { capture: true };
-const ACTIVE_OPTS: AddEventListenerOptions = { capture: true, passive: false };
 
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
 const isPlaying = computed(() => state.isPlaying);
 const isBusy = computed(() => state.isBusy);
-const canStart = computed(() => !!roomId.value && !!token.value && !!audioRef.value);
+const canStart = computed(
+  () => roomId.value !== "" && token.value !== "" && audioRef.value !== null,
+);
 const isBlocked = computed(() => playbackPhase.value === "blocked");
 const statusMessage = computed(() => {
   if (state.error) {
     return state.error;
   }
   if (isBlocked.value) {
-    return "自動再生がブロックされました。手動で再生してください。";
+    return "再生がブロックされました。▶をもう一度押してください";
   }
-  return null;
+  return "現在の配信は音声のみです。視聴は音声のみとなります。";
 });
 
 const getContainerElement = () => {
+  if (props.container) {
+    return props.container;
+  }
   return (overlayRef.value?.offsetParent as HTMLElement | null) ?? null;
 };
 
@@ -141,6 +152,15 @@ const setPositionPx = (next: { x: number; y: number }) => {
   positionPx.value = clamped.positionPx;
   positionPct.value = clamped.positionPct;
 };
+
+const { startDrag } = useLiveWindowDrag({
+  dragHandleRef,
+  getPositionPx: () => positionPx.value,
+  setPositionPx,
+  onDragEnd: () => {
+    saveStoredPosition(positionPct.value);
+  },
+});
 
 const loadStoredPosition = () => {
   if (typeof window === "undefined") {
@@ -173,59 +193,6 @@ const handleLayoutChange = () => {
   applyPositionFromPct();
 };
 
-const onDragPointerMove = (event: PointerEvent) => {
-  if (dragPointerId.value !== event.pointerId) {
-    return;
-  }
-  event.preventDefault();
-  const next = {
-    x: dragStart.value.originX + (event.clientX - dragStart.value.x),
-    y: dragStart.value.originY + (event.clientY - dragStart.value.y),
-  };
-  setPositionPx(next);
-};
-
-const endDrag = (event: PointerEvent) => {
-  if (dragPointerId.value !== event.pointerId) {
-    return;
-  }
-  event.preventDefault();
-  dragPointerId.value = null;
-  try {
-    if (typeof dragHandleRef.value?.hasPointerCapture === "function") {
-      if (dragHandleRef.value.hasPointerCapture(event.pointerId)) {
-        dragHandleRef.value.releasePointerCapture(event.pointerId);
-      }
-    }
-  } catch {
-    // ignore: releasePointerCapture can throw if capture already lost
-  }
-  document.removeEventListener("pointermove", onDragPointerMove, CAPTURE_OPTS);
-  document.removeEventListener("pointerup", endDrag, CAPTURE_OPTS);
-  document.removeEventListener("pointercancel", endDrag, CAPTURE_OPTS);
-  saveStoredPosition(positionPct.value);
-};
-
-const startDrag = (event: PointerEvent) => {
-  if (dragPointerId.value !== null) {
-    return;
-  }
-  dragPointerId.value = event.pointerId;
-  dragStart.value = {
-    x: event.clientX,
-    y: event.clientY,
-    originX: positionPx.value.x,
-    originY: positionPx.value.y,
-  };
-  const handle = dragHandleRef.value ?? (event.currentTarget as HTMLElement | null);
-  if (typeof handle?.setPointerCapture === "function") {
-    handle.setPointerCapture(event.pointerId);
-  }
-  document.addEventListener("pointermove", onDragPointerMove, ACTIVE_OPTS);
-  document.addEventListener("pointerup", endDrag, ACTIVE_OPTS);
-  document.addEventListener("pointercancel", endDrag, ACTIVE_OPTS);
-};
-
 const overlayStyle = computed(() => ({
   transform: `translate3d(${positionPx.value.x}px, ${positionPx.value.y}px, 0)`,
 }));
@@ -240,12 +207,9 @@ const resetAutoPlay = () => {
   playbackPhase.value = "idle";
 };
 
-const attemptAutoPlay = async () => {
-  if (isDisposed.value || autoPlayAttempted.value || !autoPlayArmed.value) return;
+const attemptPlay = async () => {
   const audio = audioRef.value;
-  if (!audio) return;
-
-  autoPlayAttempted.value = true;
+  if (!audio || isDisposed.value) return;
   try {
     await audio.play();
     playbackPhase.value = "playing";
@@ -254,24 +218,22 @@ const attemptAutoPlay = async () => {
   }
 };
 
-const onClickManualPlay = () => {
+const attemptAutoPlay = async () => {
+  if (isDisposed.value || autoPlayAttempted.value || !autoPlayArmed.value) return;
   const audio = audioRef.value;
-  if (!audio || isDisposed.value) return;
+  if (!audio) return;
 
-  const playPromise = audio.play();
-  if (!playPromise) return;
-
-  playPromise
-    .then(() => {
-      playbackPhase.value = "playing";
-    })
-    .catch(() => {
-      playbackPhase.value = "blocked";
-    });
+  autoPlayAttempted.value = true;
+  await attemptPlay();
 };
 
 const onClickPlay = async () => {
-  if (!canStart.value || !audioRef.value) return;
+  const audio = audioRef.value;
+  if (!canStart.value || !audio) return;
+  if (audio.srcObject !== null) {
+    await attemptPlay();
+    return;
+  }
   playbackPhase.value = "idle";
   autoPlayAttempted.value = false;
   autoPlayArmed.value = true;
@@ -283,9 +245,23 @@ const onClickPlay = async () => {
   });
 };
 
-const onClickStop = async () => {
+const stopPlayback = async () => {
   resetAutoPlay();
+  const audio = audioRef.value;
+  if (audio) {
+    audio.pause();
+    audio.srcObject = null;
+  }
   await stop();
+};
+
+const onClickStop = async () => {
+  await stopPlayback();
+};
+
+const onClickClose = async () => {
+  await stopPlayback();
+  emit("close");
 };
 
 onMounted(() => {
@@ -346,14 +322,11 @@ onBeforeUnmount(() => {
     audio.removeEventListener("canplay", handlePlayable);
   }
   liveVideoStore.setAudioElement(null);
-  void stop();
+  void stopPlayback();
   resizeObserver.value?.disconnect();
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleLayoutChange);
   }
-  document.removeEventListener("pointermove", onDragPointerMove, CAPTURE_OPTS);
-  document.removeEventListener("pointerup", endDrag, CAPTURE_OPTS);
-  document.removeEventListener("pointercancel", endDrag, CAPTURE_OPTS);
 });
 </script>
 
@@ -364,14 +337,14 @@ onBeforeUnmount(() => {
   left: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   padding: var(--live-window-padding, 12px);
   border-radius: var(--live-window-radius, 12px);
   background: var(--live-window-surface-muted, #f4f4f4);
   border: var(--live-window-border, 1px solid rgba(0, 0, 0, 0.12));
   box-shadow: var(--live-window-shadow, 0 12px 28px rgba(0, 0, 0, 0.15));
   color: rgba(0, 0, 0, 0.75);
-  min-width: 128px;
+  min-width: 240px;
   z-index: 2;
   user-select: none;
   will-change: transform;
@@ -379,7 +352,8 @@ onBeforeUnmount(() => {
 
 .audio-watch-overlay__header {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
 }
 
 .audio-watch-overlay__drag-handle {
@@ -407,10 +381,38 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45);
 }
 
+.audio-watch-overlay__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+}
+
+.audio-watch-overlay__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #d64545;
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.audio-watch-overlay__text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .audio-watch-overlay__controls {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  justify-content: end;
+  display: inline-flex;
+  align-items: center;
   gap: var(--live-window-control-gap, 6px);
 }
 
@@ -418,11 +420,6 @@ onBeforeUnmount(() => {
   width: 32px;
   height: var(--live-window-control-height, 28px);
   border-radius: var(--live-window-control-radius, 8px);
-}
-
-.audio-watch-overlay__button--manual {
-  grid-column: 1 / -1;
-  width: 100%;
 }
 
 .audio-watch-overlay__status {
@@ -435,10 +432,5 @@ onBeforeUnmount(() => {
   width: 0;
   height: 0;
   overflow: hidden;
-}
-
-.audio-watch-overlay__audio--blocked {
-  width: 100%;
-  height: var(--live-window-control-height, 28px);
 }
 </style>

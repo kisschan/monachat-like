@@ -62,11 +62,7 @@
       <SimpleButton title="閉じる" class="live-window__close" :text-size="14" @click="close" />
     </header>
     <div class="live-window__body">
-      <LiveVideoPane :is-audio-only="props.isAudioOnly" @video-ready="onVideoReady">
-        <template v-if="props.isAudioOnly" #overlay>
-          <AudioWatchOverlay />
-        </template>
-      </LiveVideoPane>
+      <LiveVideoPane :is-audio-only="props.isAudioOnly" @video-ready="onVideoReady" />
     </div>
     <div
       ref="resizeHandleRef"
@@ -80,8 +76,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import SimpleButton from "@/components/atoms/SimpleButton.vue";
-import AudioWatchOverlay from "@/components/organisms/AudioWatchOverlay.vue";
 import LiveVideoPane from "@/components/organisms/LiveVideoPane.vue";
+import { useLiveWindowDrag } from "@/composables/useLiveWindowDrag";
 import { useLiveVideoStore } from "@/stores/liveVideo";
 import {
   clamp,
@@ -114,7 +110,6 @@ const liveWindowRef = ref<HTMLElement | null>(null);
 const dragHandleRef = ref<HTMLElement | null>(null);
 const resizeHandleRef = ref<HTMLElement | null>(null);
 const activePointerId = ref<number | null>(null);
-const dragPointerId = ref<number | null>(null);
 const size = ref({ width: 520, height: 320 });
 const maxSize = ref({ width: 520, height: 320 });
 const resizeStart = ref({
@@ -131,7 +126,6 @@ const resizeStart = ref({
 const bounds = ref({ maxX: 0, maxY: 0 });
 const positionPx = ref({ x: 0, y: 0 });
 const positionPct = ref({ xPct: 0, yPct: 0 });
-const dragStart = ref({ x: 0, y: 0, originX: 0, originY: 0 });
 const resizeObserver = ref<ResizeObserver | null>(null);
 
 const getContainerElement = () => {
@@ -355,57 +349,15 @@ const startResize = (event: PointerEvent) => {
   document.addEventListener("pointercancel", endResize, ACTIVE_OPTS);
 };
 
-const onDragPointerMove = (event: PointerEvent) => {
-  if (dragPointerId.value !== event.pointerId) {
-    return;
-  }
-  event.preventDefault();
-  const next = {
-    x: dragStart.value.originX + (event.clientX - dragStart.value.x),
-    y: dragStart.value.originY + (event.clientY - dragStart.value.y),
-  };
-  setPositionPx(next);
-};
-
-const endDrag = (event: PointerEvent) => {
-  if (dragPointerId.value !== event.pointerId) {
-    return;
-  }
-  event.preventDefault();
-  dragPointerId.value = null;
-  try {
-    if (dragHandleRef.value?.hasPointerCapture(event.pointerId)) {
-      dragHandleRef.value.releasePointerCapture(event.pointerId);
-    }
-  } catch {
-    // ignore: releasePointerCapture can throw if capture already lost
-  }
-  document.removeEventListener("pointermove", onDragPointerMove, CAPTURE_OPTS);
-  document.removeEventListener("pointerup", endDrag, CAPTURE_OPTS);
-  document.removeEventListener("pointercancel", endDrag, CAPTURE_OPTS);
-  saveStoredPosition(positionPct.value);
-};
-
-const startDrag = (event: PointerEvent) => {
-  if (activePointerId.value !== null) {
-    return;
-  }
-  if (dragPointerId.value !== null) {
-    return;
-  }
-  dragPointerId.value = event.pointerId;
-  dragStart.value = {
-    x: event.clientX,
-    y: event.clientY,
-    originX: positionPx.value.x,
-    originY: positionPx.value.y,
-  };
-  const handle = dragHandleRef.value ?? (event.currentTarget as HTMLElement | null);
-  handle?.setPointerCapture(event.pointerId);
-  document.addEventListener("pointermove", onDragPointerMove, ACTIVE_OPTS);
-  document.addEventListener("pointerup", endDrag, ACTIVE_OPTS);
-  document.addEventListener("pointercancel", endDrag, ACTIVE_OPTS);
-};
+const { startDrag } = useLiveWindowDrag({
+  dragHandleRef,
+  getPositionPx: () => positionPx.value,
+  setPositionPx,
+  canStartDrag: () => activePointerId.value === null,
+  onDragEnd: () => {
+    saveStoredPosition(positionPct.value);
+  },
+});
 
 const liveWindowStyle = computed(() => ({
   width: `${size.value.width}px`,
@@ -520,9 +472,11 @@ onMounted(async () => {
     positionPct.value = storedPosition;
     applyPositionFromPct();
   } else {
-    const defaultX = clamp(bounds.value.maxX - DEFAULT_PADDING, 0, bounds.value.maxX);
-    const defaultY = clamp(DEFAULT_PADDING, 0, bounds.value.maxY);
-    setPositionPx({ x: defaultX, y: defaultY });
+    setPositionPx(
+      computeDefaultPosition(bounds.value, DEFAULT_PADDING, {
+        bottom: uiStore.bottomBarHeight,
+      }),
+    );
   }
 
   if (typeof ResizeObserver !== "undefined") {
@@ -551,9 +505,6 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointermove", onResizePointerMove, CAPTURE_OPTS);
   document.removeEventListener("pointerup", endResize, CAPTURE_OPTS);
   document.removeEventListener("pointercancel", endResize, CAPTURE_OPTS);
-  document.removeEventListener("pointermove", onDragPointerMove, CAPTURE_OPTS);
-  document.removeEventListener("pointerup", endDrag, CAPTURE_OPTS);
-  document.removeEventListener("pointercancel", endDrag, CAPTURE_OPTS);
   unlockOverscroll();
 });
 

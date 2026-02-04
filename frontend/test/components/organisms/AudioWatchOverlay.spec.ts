@@ -54,14 +54,14 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByTestId(wrapper.element, "audio-play");
+    const playButton = getByTestId(wrapper.element, "live-audio-play");
     await fireEvent.click(playButton);
     await flushPromises();
 
     expect(controller.state.isPlaying).toBe(true);
   });
 
-  it("shows manual play button when autoplay is blocked", async () => {
+  it("shows blocked message when autoplay is prevented", async () => {
     expect.hasAssertions();
     const playMock = vi
       .spyOn(HTMLMediaElement.prototype, "play")
@@ -70,7 +70,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByTestId(wrapper.element, "audio-play");
+    const playButton = getByTestId(wrapper.element, "live-audio-play");
     await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
@@ -80,10 +80,10 @@ describe("AudioWatchOverlay", () => {
     await flushPromises();
 
     expect(playMock).toHaveBeenCalledTimes(1);
-    expect(wrapper.text()).toContain("手動再生");
+    expect(wrapper.text()).toContain("再生がブロックされました");
   });
 
-  it("calls play again when manual play is clicked", async () => {
+  it("calls play again when play is clicked after a block", async () => {
     expect.hasAssertions();
     const playMock = vi
       .spyOn(HTMLMediaElement.prototype, "play")
@@ -93,7 +93,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByTestId(wrapper.element, "audio-play");
+    const playButton = getByTestId(wrapper.element, "live-audio-play");
     await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
@@ -102,12 +102,11 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const manualButton = getByTestId(wrapper.element, "audio-manual-play");
-    await fireEvent.click(manualButton);
+    await fireEvent.click(playButton);
     await flushPromises();
 
     expect(playMock).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).not.toContain("手動再生");
+    expect(wrapper.text()).not.toContain("再生がブロックされました");
   });
 
   it("sets isPlaying false after clicking stop", async () => {
@@ -117,8 +116,8 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByTestId(wrapper.element, "audio-play");
-    const stopButton = getByTestId(wrapper.element, "audio-stop");
+    const playButton = getByTestId(wrapper.element, "live-audio-play");
+    const stopButton = getByTestId(wrapper.element, "live-audio-stop");
 
     await fireEvent.click(playButton);
     await flushPromises();
@@ -143,7 +142,7 @@ describe("AudioWatchOverlay", () => {
 
     await flushPromises();
 
-    const playButton = getByTestId(wrapper.element, "audio-play");
+    const playButton = getByTestId(wrapper.element, "live-audio-play");
     await fireEvent.click(playButton);
     wrapper.unmount();
     await flushPromises();
@@ -197,7 +196,7 @@ describe("AudioWatchOverlay", () => {
     const wrapper = mountOverlay();
 
     const overlay = wrapper.element as HTMLElement;
-    const playButton = getByTestId(overlay, "audio-play");
+    const playButton = getByTestId(overlay, "live-audio-play");
     const container = document.createElement("div");
     container.style.width = "320px";
     container.style.height = "200px";

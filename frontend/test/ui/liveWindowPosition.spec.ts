@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { clamp, computeBounds, pctToPx, pxToPct } from "@/ui/liveWindowPosition";
+import {
+  clamp,
+  computeBounds,
+  computeDefaultPosition,
+  pctToPx,
+  pxToPct,
+} from "@/ui/liveWindowPosition";
 
 describe("liveWindowPosition helpers", () => {
   it("clamps values within range", () => {
@@ -35,5 +41,19 @@ describe("liveWindowPosition helpers", () => {
     expect.hasAssertions();
     expect(pxToPct(10, 0)).toBe(0);
     expect(pctToPx(0.5, 0)).toBe(0);
+  });
+
+  it("computes default position with padding and inset", () => {
+    expect.hasAssertions();
+    expect(computeDefaultPosition({ maxX: 200, maxY: 140 }, 12)).toStrictEqual({
+      x: 188,
+      y: 128,
+    });
+    expect(
+      computeDefaultPosition({ maxX: 200, maxY: 140 }, 12, { bottom: 20, right: 8 }),
+    ).toStrictEqual({
+      x: 180,
+      y: 108,
+    });
   });
 });

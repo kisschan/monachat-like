@@ -26,7 +26,7 @@ describe("LivePlayerHost", () => {
     expect.hasAssertions();
     const wrapper = mountHost("audio");
 
-    expect(getByTestId(wrapper.element, "audio-play")).toBeInstanceOf(HTMLElement);
+    expect(getByTestId(wrapper.element, "live-audio-play")).toBeInstanceOf(HTMLElement);
     expect(queryByTestId(wrapper.element, "live-video")).toBeNull();
   });
 
