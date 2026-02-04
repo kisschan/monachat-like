@@ -20,12 +20,11 @@ const createPointerEvent = (type: string, options: PointerEventInit) => {
   return new PointerEvent(type, options);
 };
 
-afterEach(() => {
-  document.body.innerHTML = "";
-  vi.restoreAllMocks();
-});
-
 describe("useLiveWindowDrag", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
   it("tracks pointer movement and updates position", () => {
     expect.hasAssertions();
     const handle = createHandle();
