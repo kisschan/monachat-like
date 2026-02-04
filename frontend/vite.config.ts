@@ -34,6 +34,16 @@ export default defineConfig(({}) => {
       environment: "happy-dom",
       globals: true,
       include: ["test/**/*.spec.ts"],
+      watchExclude: [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/coverage/**",
+        "**/.vite/**",
+        "**/.cache/**",
+        "**/tmp/**",
+        "**/.tmp/**",
+        "**/*.log",
+      ],
     },
   };
 });
