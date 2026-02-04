@@ -10,7 +10,7 @@
     "lint": "eslint --fix .",
     "storybook": "sb dev -p 6006",
     "build-storybook": "sb build",
-    "test:ci": "vitest run --watch=false --project vite.config.ts",
+    "test:ci": "vitest run --watch=false --coverage.enabled=false",
     "test:e2e": "playwright test",
     "test:browser": "vitest run --watch=false --browser --browser.name=firefox --coverage.enabled=false",
     "test:coverage": "vitest run --watch=false --coverage.enabled=true"
