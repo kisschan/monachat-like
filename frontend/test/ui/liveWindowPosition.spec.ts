@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   clamp,
+  clampPosition,
   computeBounds,
   computeDefaultPosition,
   pctToPx,
@@ -54,6 +55,26 @@ describe("liveWindowPosition helpers", () => {
     ).toStrictEqual({
       x: 180,
       y: 108,
+    });
+    expect(
+      computeDefaultPosition({ maxX: 0, maxY: 0 }, 12, { top: 16, left: 16 }),
+    ).toStrictEqual({
+      x: 0,
+      y: 0,
+    });
+  });
+
+  it("clamps positions with optional insets", () => {
+    expect.hasAssertions();
+    expect(clampPosition({ x: 180, y: 120 }, { maxX: 200, maxY: 140 })).toStrictEqual({
+      positionPx: { x: 180, y: 120 },
+      positionPct: { xPct: 0.9, yPct: 0.8571428571428571 },
+    });
+    expect(
+      clampPosition({ x: 10, y: 8 }, { maxX: 200, maxY: 140 }, { top: 16, left: 12 }),
+    ).toStrictEqual({
+      positionPx: { x: 12, y: 16 },
+      positionPct: { xPct: 0.06, yPct: 0.11428571428571428 },
     });
   });
 });

@@ -36,8 +36,9 @@ export const useLiveWindowDrag = (options: LiveWindowDragOptions) => {
     event.preventDefault();
     dragPointerId.value = null;
     try {
-      if (options.dragHandleRef.value?.hasPointerCapture(event.pointerId)) {
-        options.dragHandleRef.value.releasePointerCapture(event.pointerId);
+      const el = options.dragHandleRef.value;
+      if (el && el.hasPointerCapture(event.pointerId) === true) {
+        el.releasePointerCapture(event.pointerId);
       }
     } catch {
       // ignore: releasePointerCapture can throw if capture already lost

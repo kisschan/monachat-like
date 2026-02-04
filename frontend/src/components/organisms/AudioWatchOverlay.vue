@@ -73,8 +73,14 @@ import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import { useLiveWindowDrag } from "@/composables/useLiveWindowDrag";
 import { useLivePlaybackController } from "@/composables/useLivePlaybackController";
 import { useLiveVideoStore } from "@/stores/liveVideo";
+import { useUIStore } from "@/stores/ui";
 import { useUserStore } from "@/stores/user";
-import { clamp, clampPosition, computeBounds, pctToPx } from "@/ui/liveWindowPosition";
+import {
+  clampPosition,
+  computeBounds,
+  computeDefaultPosition,
+  pctToPx,
+} from "@/ui/liveWindowPosition";
 
 const props = withDefaults(defineProps<{ container?: HTMLElement | null }>(), {
   container: null,
@@ -84,6 +90,7 @@ const emit = defineEmits<{
 }>();
 
 const liveVideoStore = useLiveVideoStore();
+const uiStore = useUIStore();
 const userStore = useUserStore();
 const { state, start, stop } = useLivePlaybackController();
 const audioRef = ref<HTMLAudioElement | null>(null);
@@ -140,12 +147,11 @@ const updateBounds = () => {
   );
 };
 
-const applyPositionFromPct = () => {
-  positionPx.value = {
-    x: pctToPx(positionPct.value.xPct, bounds.value.maxX),
-    y: pctToPx(positionPct.value.yPct, bounds.value.maxY),
-  };
-};
+const getSafeInset = () => ({
+  top: DEFAULT_PADDING,
+  left: DEFAULT_PADDING,
+  bottom: uiStore.bottomBarHeight,
+});
 
 const setPositionPx = (next: { x: number; y: number }) => {
   const clamped = clampPosition(next, bounds.value);
@@ -153,6 +159,18 @@ const setPositionPx = (next: { x: number; y: number }) => {
   positionPct.value = clamped.positionPct;
 };
 
+const setPositionPxWithInset = (next: { x: number; y: number }) => {
+  const clamped = clampPosition(next, bounds.value, getSafeInset());
+  positionPx.value = clamped.positionPx;
+  positionPct.value = clamped.positionPct;
+};
+
+const applyPositionFromPct = () => {
+  setPositionPxWithInset({
+    x: pctToPx(positionPct.value.xPct, bounds.value.maxX),
+    y: pctToPx(positionPct.value.yPct, bounds.value.maxY),
+  });
+};
 const { startDrag } = useLiveWindowDrag({
   dragHandleRef,
   getPositionPx: () => positionPx.value,
@@ -280,9 +298,9 @@ onMounted(() => {
       positionPct.value = storedPosition;
       applyPositionFromPct();
     } else {
-      const defaultX = clamp(bounds.value.maxX - DEFAULT_PADDING, 0, bounds.value.maxX);
-      const defaultY = clamp(bounds.value.maxY - DEFAULT_PADDING, 0, bounds.value.maxY);
-      setPositionPx({ x: defaultX, y: defaultY });
+      setPositionPxWithInset(
+        computeDefaultPosition(bounds.value, DEFAULT_PADDING, getSafeInset()),
+      );
     }
   });
 

@@ -188,7 +188,7 @@ describe("AudioWatchOverlay", () => {
     await fireEvent.pointerMove(document, { pointerId: 1, clientX: 180, clientY: 130 });
     await fireEvent.pointerUp(document, { pointerId: 1, clientX: 180, clientY: 130 });
 
-    expect(overlay.getAttribute("style")).toContain("translate3d(168px, 108px, 0)");
+    expect(overlay.getAttribute("style")).toContain("translate3d(168px, 58px, 0)");
   });
 
   it("does not start dragging from the play button", async () => {

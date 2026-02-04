@@ -87,10 +87,24 @@ export const resizeFromLeftAnchored = ({
   };
 };
 
-export const clampPosition = (next: PositionPx, bounds: Bounds): ClampedPosition => {
+export const clampPosition = (
+  next: PositionPx,
+  bounds: Bounds,
+  inset: Partial<PositionInset> = {},
+): ClampedPosition => {
+  const normalized = {
+    top: clamp(inset.top ?? 0, 0, bounds.maxY),
+    right: clamp(inset.right ?? 0, 0, bounds.maxX),
+    bottom: clamp(inset.bottom ?? 0, 0, bounds.maxY),
+    left: clamp(inset.left ?? 0, 0, bounds.maxX),
+  };
+  const maxX = Math.max(0, bounds.maxX - normalized.right);
+  const maxY = Math.max(0, bounds.maxY - normalized.bottom);
+  const minX = Math.min(normalized.left, maxX);
+  const minY = Math.min(normalized.top, maxY);
   const clamped = {
-    x: clamp(next.x, 0, bounds.maxX),
-    y: clamp(next.y, 0, bounds.maxY),
+    x: clamp(next.x, minX, maxX),
+    y: clamp(next.y, minY, maxY),
   };
   return {
     positionPx: clamped,
@@ -107,13 +121,17 @@ export const computeDefaultPosition = (
   inset: Partial<PositionInset> = {},
 ): PositionPx => {
   const normalized = {
-    top: inset.top ?? 0,
-    right: inset.right ?? 0,
-    bottom: inset.bottom ?? 0,
-    left: inset.left ?? 0,
+    top: clamp(inset.top ?? 0, 0, bounds.maxY),
+    right: clamp(inset.right ?? 0, 0, bounds.maxX),
+    bottom: clamp(inset.bottom ?? 0, 0, bounds.maxY),
+    left: clamp(inset.left ?? 0, 0, bounds.maxX),
   };
+  const maxX = Math.max(0, bounds.maxX - normalized.right);
+  const maxY = Math.max(0, bounds.maxY - normalized.bottom);
+  const minX = Math.min(normalized.left, maxX);
+  const minY = Math.min(normalized.top, maxY);
   return {
-    x: clamp(bounds.maxX - padding - normalized.right, normalized.left, bounds.maxX),
-    y: clamp(bounds.maxY - padding - normalized.bottom, normalized.top, bounds.maxY),
+    x: clamp(bounds.maxX - padding - normalized.right, minX, maxX),
+    y: clamp(bounds.maxY - padding - normalized.bottom, minY, maxY),
   };
 };
