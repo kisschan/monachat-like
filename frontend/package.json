@@ -10,11 +10,10 @@
     "lint": "eslint --fix .",
     "storybook": "sb dev -p 6006",
     "build-storybook": "sb build",
-    "test": "vitest run --project vite.config.ts",
-    "test:watch": "vitest --project vite.config.ts",
+    "test:ci": "vitest run --watch=false --project vite.config.ts",
     "test:e2e": "playwright test",
-    "test:browser": "vitest run --browser --browser.name=firefox --coverage.enabled=false --watch=false",
-    "test:coverage": "vitest run --coverage.enabled=true"
+    "test:browser": "vitest run --watch=false --browser --browser.name=firefox --coverage.enabled=false",
+    "test:coverage": "vitest run --watch=false --coverage.enabled=true"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",

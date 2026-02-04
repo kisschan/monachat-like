@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CI: true
 
     strategy:
       matrix:
@@ -37,6 +39,9 @@ jobs:
         working-directory: ./frontend
       - name: lint frontend
         run: yarn lint
+        working-directory: ./frontend
+      - name: test frontend (unit, ci)
+        run: yarn test:ci
         working-directory: ./frontend
       - name: test frontend (browser, coverage off)
         run: yarn test:browser

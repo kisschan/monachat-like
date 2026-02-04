@@ -106,7 +106,7 @@ const positionPct = ref({ xPct: 0, yPct: 0 });
 const resizeObserver = ref<ResizeObserver | null>(null);
 
 const POSITION_STORAGE_KEY = "audio-mini-position";
-const DEFAULT_PADDING = 12;
+const DEFAULT_PADDING = 16;
 
 const roomId = computed(() => userStore.currentRoom?.id ?? "");
 const token = computed(() => userStore.myToken ?? "");
@@ -147,26 +147,14 @@ const updateBounds = () => {
   );
 };
 
-const getSafeInset = () => ({
-  top: DEFAULT_PADDING,
-  left: DEFAULT_PADDING,
-  bottom: uiStore.bottomBarHeight,
-});
-
 const setPositionPx = (next: { x: number; y: number }) => {
   const clamped = clampPosition(next, bounds.value);
   positionPx.value = clamped.positionPx;
   positionPct.value = clamped.positionPct;
 };
 
-const setPositionPxWithInset = (next: { x: number; y: number }) => {
-  const clamped = clampPosition(next, bounds.value, getSafeInset());
-  positionPx.value = clamped.positionPx;
-  positionPct.value = clamped.positionPct;
-};
-
 const applyPositionFromPct = () => {
-  setPositionPxWithInset({
+  setPositionPx({
     x: pctToPx(positionPct.value.xPct, bounds.value.maxX),
     y: pctToPx(positionPct.value.yPct, bounds.value.maxY),
   });
@@ -298,8 +286,10 @@ onMounted(() => {
       positionPct.value = storedPosition;
       applyPositionFromPct();
     } else {
-      setPositionPxWithInset(
-        computeDefaultPosition(bounds.value, DEFAULT_PADDING, getSafeInset()),
+      setPositionPx(
+        computeDefaultPosition(bounds.value, DEFAULT_PADDING, {
+          bottom: uiStore.bottomBarHeight,
+        }),
       );
     }
   });
