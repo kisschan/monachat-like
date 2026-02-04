@@ -353,7 +353,7 @@ const { startDrag } = useLiveWindowDrag({
   dragHandleRef,
   getPositionPx: () => positionPx.value,
   setPositionPx,
-  canStartDrag: () => activePointerId.value === null,
+  isDragBlocked: () => activePointerId.value !== null,
   onDragEnd: () => {
     saveStoredPosition(positionPct.value);
   },

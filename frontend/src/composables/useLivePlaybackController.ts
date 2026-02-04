@@ -77,6 +77,7 @@ export const useLivePlaybackController = () => {
 
     state.isBusy = true;
     state.error = null;
+    state.isPlaying = true;
 
     let subscribePromise: Promise<WhepSubscribeHandle> | null = null;
 
@@ -107,6 +108,7 @@ export const useLivePlaybackController = () => {
       }
     } catch (e: unknown) {
       state.error = handleWatchStartError(e);
+      state.isPlaying = false;
     } finally {
       if (watchSubscribeInFlight.value === subscribePromise) {
         watchSubscribeInFlight.value = null;

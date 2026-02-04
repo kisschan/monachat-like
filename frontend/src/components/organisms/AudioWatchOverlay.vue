@@ -219,8 +219,10 @@ const attemptPlay = async () => {
   try {
     await audio.play();
     playbackPhase.value = "playing";
+    state.isPlaying = true;
   } catch {
     playbackPhase.value = "blocked";
+    state.isPlaying = false;
   }
 };
 
@@ -236,6 +238,7 @@ const attemptAutoPlay = async () => {
 const onClickPlay = async () => {
   const audio = audioRef.value;
   if (!canStart.value || !audio) return;
+  state.isPlaying = true;
   if (audio.srcObject !== null) {
     await attemptPlay();
     return;

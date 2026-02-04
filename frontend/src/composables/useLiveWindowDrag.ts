@@ -37,7 +37,12 @@ export const useLiveWindowDrag = (options: LiveWindowDragOptions) => {
     dragPointerId.value = null;
     try {
       const el = options.dragHandleRef.value;
-      if (el && el.hasPointerCapture(event.pointerId) === true) {
+      if (
+        el &&
+        typeof el.hasPointerCapture === "function" &&
+        el.hasPointerCapture(event.pointerId) === true &&
+        typeof el.releasePointerCapture === "function"
+      ) {
         el.releasePointerCapture(event.pointerId);
       }
     } catch {
@@ -65,7 +70,9 @@ export const useLiveWindowDrag = (options: LiveWindowDragOptions) => {
       originY: position.y,
     };
     const handle = options.dragHandleRef.value ?? (event.currentTarget as HTMLElement | null);
-    handle?.setPointerCapture(event.pointerId);
+    if (handle && typeof handle.setPointerCapture === "function") {
+      handle.setPointerCapture(event.pointerId);
+    }
     document.addEventListener("pointermove", onDragPointerMove, ACTIVE_OPTS);
     document.addEventListener("pointerup", endDrag, ACTIVE_OPTS);
     document.addEventListener("pointercancel", endDrag, ACTIVE_OPTS);
