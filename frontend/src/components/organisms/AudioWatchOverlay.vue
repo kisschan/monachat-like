@@ -100,6 +100,7 @@ const playbackPhase = ref<"idle" | "playing" | "blocked">("idle");
 const autoPlayAttempted = ref(false);
 const autoPlayArmed = ref(false);
 const isDisposed = ref(false);
+const playRequestToken = ref(0);
 const bounds = ref({ maxX: 0, maxY: 0 });
 const positionPx = ref({ x: 0, y: 0 });
 const positionPct = ref({ xPct: 0, yPct: 0 });
@@ -218,6 +219,10 @@ const attemptPlay = async () => {
   if (!audio || isDisposed.value) return;
   try {
     await audio.play();
+    if (isDisposed.value) {
+      state.isPlaying = false;
+      return;
+    }
     playbackPhase.value = "playing";
     state.isPlaying = true;
   } catch {
@@ -238,24 +243,36 @@ const attemptAutoPlay = async () => {
 const onClickPlay = async () => {
   const audio = audioRef.value;
   if (!canStart.value || !audio) return;
+  playRequestToken.value += 1;
+  const tokenAtStart = playRequestToken.value;
   state.isPlaying = true;
   if (audio.srcObject !== null) {
     await attemptPlay();
+    if (isDisposed.value || tokenAtStart !== playRequestToken.value) {
+      stopPlayback("unmount");
+    }
     return;
   }
   playbackPhase.value = "idle";
   autoPlayAttempted.value = false;
   autoPlayArmed.value = true;
-  await start({
-    roomId: roomId.value,
-    token: token.value,
-    mediaElement: audioRef.value,
-    audioOnly: true,
-  });
+  try {
+    await start({
+      roomId: roomId.value,
+      token: token.value,
+      mediaElement: audioRef.value,
+      audioOnly: true,
+    });
+  } finally {
+    if (isDisposed.value || tokenAtStart !== playRequestToken.value) {
+      stopPlayback("unmount");
+    }
+  }
 };
 
 const stopPlayback = (reason: "stop" | "close" | "unmount" = "stop") => {
   void reason;
+  playRequestToken.value += 1;
   state.isPlaying = false;
   resetAutoPlay();
   const audio = audioRef.value;
