@@ -80,6 +80,7 @@ export const useLivePlaybackController = () => {
     state.isPlaying = true;
 
     let subscribePromise: Promise<WhepSubscribeHandle> | null = null;
+    let startSucceeded = false;
 
     try {
       const config = await fetchWebrtcConfig(args.roomId, args.token);
@@ -97,6 +98,7 @@ export const useLivePlaybackController = () => {
       if (pendingStop.value) {
         pendingStop.value = false;
         await stopHandleSafely(handle);
+        startSucceeded = true;
         return;
       }
 
@@ -106,10 +108,15 @@ export const useLivePlaybackController = () => {
         subscribeHandle.value = handle;
         state.isPlaying = true;
       }
+
+      startSucceeded = true;
     } catch (e: unknown) {
       state.error = handleWatchStartError(e);
       state.isPlaying = false;
     } finally {
+      if (!startSucceeded) {
+        pendingStop.value = false;
+      }
       if (watchSubscribeInFlight.value === subscribePromise) {
         watchSubscribeInFlight.value = null;
       }
