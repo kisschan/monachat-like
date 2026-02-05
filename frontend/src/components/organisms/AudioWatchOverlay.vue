@@ -255,9 +255,10 @@ const onClickPlay = async () => {
 };
 
 const stopPlayback = async () => {
+  state.isPlaying = false;
   resetAutoPlay();
   const audio = audioRef.value;
-  if (audio) {
+  if (audio !== null) {
     audio.pause();
     audio.srcObject = null;
   }
