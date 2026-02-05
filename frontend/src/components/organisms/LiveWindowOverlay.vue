@@ -84,14 +84,18 @@ import {
   clamp,
   clampPosition,
   computeBounds,
+  computeDefaultPosition,
   pctToPx,
   resizeFromLeftAnchored,
 } from "@/ui/liveWindowPosition";
 
-const props = withDefaults(defineProps<{ isAudioOnly?: boolean; container?: HTMLElement | null }>(), {
-  isAudioOnly: false,
-  container: null,
-});
+const props = withDefaults(
+  defineProps<{ isAudioOnly?: boolean; container?: HTMLElement | null }>(),
+  {
+    isAudioOnly: false,
+    container: null,
+  },
+);
 const emit = defineEmits<{
   (e: "close"): void;
 }>();
