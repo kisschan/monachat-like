@@ -318,7 +318,7 @@ onMounted(() => {
 watch(
   () => state.isPlaying,
   (playing) => {
-    if (!playing) {
+    if (!playing && playbackPhase.value !== "blocked") {
       resetAutoPlay();
     }
   },

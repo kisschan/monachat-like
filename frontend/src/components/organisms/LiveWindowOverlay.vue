@@ -79,6 +79,7 @@ import SimpleButton from "@/components/atoms/SimpleButton.vue";
 import LiveVideoPane from "@/components/organisms/LiveVideoPane.vue";
 import { useLiveWindowDrag } from "@/composables/useLiveWindowDrag";
 import { useLiveVideoStore } from "@/stores/liveVideo";
+import { useUIStore } from "@/stores/ui";
 import {
   clamp,
   clampPosition,
@@ -106,6 +107,7 @@ const POSITION_STORAGE_KEY = "live-window-position";
 const DEFAULT_PADDING = 16;
 
 const liveVideoStore = useLiveVideoStore();
+const uiStore = useUIStore();
 const liveWindowRef = ref<HTMLElement | null>(null);
 const dragHandleRef = ref<HTMLElement | null>(null);
 const resizeHandleRef = ref<HTMLElement | null>(null);
