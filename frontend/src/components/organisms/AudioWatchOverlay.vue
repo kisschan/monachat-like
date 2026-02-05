@@ -254,23 +254,30 @@ const onClickPlay = async () => {
   });
 };
 
-const stopPlayback = async () => {
+const stopPlayback = (reason: "stop" | "close" | "unmount" = "stop") => {
+  void reason;
   state.isPlaying = false;
   resetAutoPlay();
   const audio = audioRef.value;
   if (audio !== null) {
-    audio.pause();
+    try {
+      audio.pause();
+    } catch {
+      // ignore
+    }
     audio.srcObject = null;
   }
-  await stop();
+  void stop().catch(() => {
+    // ignore
+  });
 };
 
-const onClickStop = async () => {
-  await stopPlayback();
+const onClickStop = () => {
+  stopPlayback("stop");
 };
 
-const onClickClose = async () => {
-  await stopPlayback();
+const onClickClose = () => {
+  stopPlayback("close");
   emit("close");
 };
 
@@ -334,7 +341,7 @@ onBeforeUnmount(() => {
     audio.removeEventListener("canplay", handlePlayable);
   }
   liveVideoStore.setAudioElement(null);
-  void stopPlayback();
+  stopPlayback("unmount");
   resizeObserver.value?.disconnect();
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleLayoutChange);
