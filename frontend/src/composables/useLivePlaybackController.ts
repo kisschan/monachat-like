@@ -121,15 +121,14 @@ export const useLivePlaybackController = () => {
   };
 
   const stop = async () => {
+    state.isPlaying = false;
     if (watchSubscribeInFlight.value !== null && subscribeHandle.value === null) {
       pendingStop.value = true;
-      state.isPlaying = false;
       return;
     }
 
     if (subscribeHandle.value === null) {
       pendingStop.value = false;
-      state.isPlaying = false;
       return;
     }
 
