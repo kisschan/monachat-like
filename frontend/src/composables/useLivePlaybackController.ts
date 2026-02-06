@@ -1,4 +1,4 @@
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import axios from "axios";
 import { fetchWebrtcConfig } from "@/api/liveWebRTC";
 import {
@@ -66,6 +66,8 @@ const stopHandleSafely = async (handle: WhepSubscribeHandle) => {
 };
 
 export const useLivePlaybackController = () => {
+  const hasActiveSubscription = computed(() => subscribeHandle.value !== null);
+
   const start = async (args: LivePlaybackStartArgs) => {
     if (
       state.isBusy ||
@@ -139,23 +141,30 @@ export const useLivePlaybackController = () => {
       return;
     }
 
+    const handle = subscribeHandle.value;
+    if (handle === null) {
+      pendingStop.value = false;
+      return;
+    }
+
     state.isBusy = true;
     state.error = null;
 
     try {
-      await subscribeHandle.value.stop();
+      await handle.stop();
       subscribeHandle.value = null;
-    } catch {
+    } catch (e) {
+      console.error("stop watch failed", e);
       state.error = "視聴停止に失敗しました。";
     } finally {
       state.isBusy = false;
       state.isPlaying = false;
-      subscribeHandle.value = null;
     }
   };
 
   return {
     state,
+    hasActiveSubscription,
     start,
     stop,
   };

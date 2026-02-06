@@ -253,7 +253,7 @@ const myId = computed(() => userStore.myID);
 const liveRoomsStore = useLiveRoomsStore();
 const liveVideoStore = useLiveVideoStore();
 const playbackController = useLivePlaybackController();
-const { state: playbackState } = playbackController;
+const { state: playbackState, hasActiveSubscription } = playbackController;
 const {
   visibleLiveRooms,
   hasLoadedOnce,
@@ -591,7 +591,7 @@ const canStopPublish = computed(() => {
 });
 
 const canStopWatch = computed(() => {
-  return !playbackState.isBusy && playbackState.isPlaying;
+  return !playbackState.isBusy && hasActiveSubscription.value;
 });
 
 const loadStatusFor = async (ctx: { roomId: string; token: string }) => {
