@@ -74,7 +74,7 @@ describe("AudioWatchOverlay", () => {
     await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
-    audioElement.srcObject = {} as MediaStream;
+    audioElement.srcObject = new MediaStream();
     audioElement.dispatchEvent(new Event("loadedmetadata"));
 
     await flushPromises();
@@ -97,7 +97,7 @@ describe("AudioWatchOverlay", () => {
     await fireEvent.click(playButton);
 
     const audioElement = wrapper.find("audio").element as HTMLAudioElement;
-    audioElement.srcObject = {} as MediaStream;
+    audioElement.srcObject = new MediaStream();
     audioElement.dispatchEvent(new Event("loadedmetadata"));
 
     await flushPromises();
@@ -188,7 +188,8 @@ describe("AudioWatchOverlay", () => {
     await fireEvent.pointerMove(document, { pointerId: 1, clientX: 180, clientY: 130 });
     await fireEvent.pointerUp(document, { pointerId: 1, clientX: 180, clientY: 130 });
 
-    expect(overlay.getAttribute("style")).toContain("translate3d(164px, 54px, 0)");
+    const style = overlay.getAttribute("style") ?? "";
+    expect(style).toMatch(/translate3d\(164px,\s*54px,\s*0(px)?\)/);
   });
 
   it("does not start dragging from the play button", async () => {

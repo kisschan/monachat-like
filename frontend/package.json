@@ -10,10 +10,10 @@
     "lint": "eslint --fix .",
     "storybook": "sb dev -p 6006",
     "build-storybook": "sb build",
-    "test:ci": "vitest run --watch=false --coverage.enabled=false --project=unit",
+    "test:ci": "VITEST_MODE=node vitest run --watch=false --coverage.enabled=false --ui=false",
     "test:e2e": "playwright test",
-    "test:browser": "vitest run --watch=false --browser --browser.name=firefox --coverage.enabled=false --project=browser",
-    "test:coverage": "vitest run --watch=false --coverage.enabled=true --project=unit"
+    "test:browser": "VITEST_MODE=browser vitest run --watch=false --coverage.enabled=false --ui=false",
+    "test:coverage": "VITEST_MODE=node vitest run --watch=false --coverage.enabled=true --ui=false"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",
