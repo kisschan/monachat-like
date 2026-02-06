@@ -1,20 +1,27 @@
 import { defineWorkspace } from "vitest/config";
 
-export default defineWorkspace([
-  // This will keep running your existing tests.
-  // If you don't need to run those in Node.js anymore,
-  // You can safely remove it from the workspace file
-  // Or move the browser test configuration to the config file.
-  "vite.config.ts",
-  {
-    extends: "vite.config.ts",
-    test: {
-      browser: {
-        enabled: true,
-        name: "chromium",
-        provider: "playwright",
-        providerOptions: {},
-      },
+const runBrowserProject = process.argv.some(
+  (arg) => arg === "--browser" || arg.startsWith("--browser.") || arg === "--project=browser",
+);
+
+const unitProject = {
+  extends: "vite.config.ts",
+  test: {
+    name: "unit",
+  },
+};
+
+const browserProject = {
+  extends: "vite.config.ts",
+  test: {
+    name: "browser",
+    browser: {
+      enabled: true,
+      name: "chromium",
+      provider: "playwright",
+      providerOptions: {},
     },
   },
-]);
+};
+
+export default defineWorkspace([unitProject, ...(runBrowserProject ? [browserProject] : [])]);
