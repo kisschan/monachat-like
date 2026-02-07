@@ -3,8 +3,6 @@
     ref="root"
     class="room"
     :class="{ yellow: currentRoom?.id === '/24' }"
-    @dragover.prevent
-    @dragenter.prevent
   >
     <div class="top-right-text"><SpanText :size="15" :text="topRightText" /></div>
     <div class="top-log-buttons">
@@ -44,14 +42,6 @@
     <div
       v-for="(user, id) in visibleUsers"
       :key="id"
-      :ref="
-        // https://vuejs.org/guide/essentials/template-refs.html#function-refs
-        (el) => {
-          if (el) {
-            characterChildren[id] = el as any;
-          }
-        }
-      "
       class="character-frame"
       :style="{
         left: user.dispX + (draggingId === (id as unknown as string) ? dragOffset.x : 0) + 'px',
@@ -157,7 +147,6 @@ const statOptions = Stat.defaultOptions();
 // 要素
 const root = ref<HTMLDivElement | null>(null);
 const chatField = ref<InstanceType<typeof SubmittableField> | null>(null);
-const characterChildren = ref<{ [key: string]: InstanceType<typeof ChatCharacter> }>({});
 
 // リアクティブ
 const selectedStat = ref("");
