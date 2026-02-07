@@ -3,7 +3,6 @@
     ref="root"
     class="room"
     :class="{ yellow: currentRoom?.id === '/24' }"
-    @drop.prevent="drop"
     @dragover.prevent
     @dragenter.prevent
   >
@@ -55,8 +54,8 @@
       "
       class="character-frame"
       :style="{
-        left: user.dispX + 'px',
-        top: user.dispY - bubbleAreaHeight + 'px',
+        left: user.dispX + (draggingId === (id as unknown as string) ? dragOffset.x : 0) + 'px',
+        top: user.dispY - bubbleAreaHeight + (draggingId === (id as unknown as string) ? dragOffset.y : 0) + 'px',
         // TODO: 可動域の高さが400pxを超えたときに破綻するので修正する
         zIndex: `${user.dispY + (isMine(id as unknown as string) ? 500 : 100)}`,
       }"
@@ -67,10 +66,7 @@
         :user="{ ...user, id }"
         :messages="chatMessages[id] ?? []"
         :bubble-area-height="bubbleAreaHeight"
-        :draggable="isMine(id as unknown as string)"
-        @dragstart="dragStart"
-        @dragenf="dragEnd"
-        @pointerdown="pointerDown"
+        @pointerdown="(e: PointerEvent) => onCharacterPointerDown(e, id as unknown as string, user)"
         @size-updated="sizeUpdated"
         @bubble-deleted="bubbleDeleted"
         @click="click"
@@ -143,6 +139,7 @@ import { useRoomStore } from "@/stores/room";
 import { useUsersStore } from "@/stores/users";
 import { useLogStore } from "@/stores/log";
 import { handleLongPressOnUser } from "@/services/longPressAction";
+import { useCharacterDrag } from "@/composables/useCharacterDrag";
 
 const userStore = useUserStore();
 const usersStore = useUsersStore();
@@ -165,12 +162,9 @@ const characterChildren = ref<{ [key: string]: InstanceType<typeof ChatCharacter
 // リアクティブ
 const selectedStat = ref("");
 const text = ref("");
-const gripX = ref(0);
-const gripY = ref(0);
 const permittedSubmitting = ref(true); // チャットの送信が許可されているかどうか
 const keyCount = ref(0); // キータイプ数
 const typingStartTime = ref(0); // タイピング開始時刻
-const activePointerId = ref<number | null>(null);
 
 // ストア
 const { disconnected, myID } = storeToRefs(userStore);
@@ -217,6 +211,12 @@ const shouldRenderLiveOverlay = computed(() => {
 const isMine = (id: string) => {
   return id === myID.value;
 };
+
+// キャラドラッグ (Pointer Events)
+const { draggingId, dragOffset, onPointerDown: onCharacterPointerDown } = useCharacterDrag({
+  isMine,
+  setXY: (x, y) => userStore.setXY(x, y),
+});
 
 // "/21" でも "21" でも内部は "/21" に揃える
 const toInternalRoomId = (raw: unknown): string => {
@@ -286,30 +286,6 @@ const onKeyDown = (e: KeyboardEvent) => {
 };
 onUnmounted(() => window.removeEventListener("keydown", onKeyDown));
 
-const drop = (e: DragEvent) => {
-  if (activePointerId.value === null) return;
-  const droppedPointerId = e.dataTransfer?.getData("text/plain");
-  if (droppedPointerId !== activePointerId.value.toString()) return;
-  if (e.target === root.value) {
-    // なにもないところにドロップしたとき
-    userStore.setXY(e.offsetX - gripX.value, e.offsetY - gripY.value);
-    return;
-  }
-  //何か別の要素にドロップしてしまったとき
-  const targetId = Object.keys(characterChildren.value).find((element) => {
-    const candidate = characterChildren.value[element] as unknown as HTMLElement;
-    // NOTE: eventが発生するのがcharacter配下のみなので、要素を含むかどうかで判定する
-    return candidate.contains(e.target as HTMLElement);
-  });
-  if (targetId !== undefined) {
-    // キャラクターの要素にドロップしたとき
-    userStore.setXY(
-      (usersStore.users[targetId]?.x ?? 0) + e.offsetX - gripX.value,
-      (usersStore.users[targetId]?.y ?? 0) + e.offsetY - gripY.value,
-    );
-  }
-  // TODO: 画像、名前とトリップにドロップしたときに変なふうになる
-};
 const clickInvert = () => {
   userStore.setScl();
 };
@@ -398,21 +374,6 @@ const onChangeStat = (e: Event) => {
   userStore.setStat(e.target.value);
 };
 
-const pointerDown = (e: PointerEvent) => {
-  activePointerId.value = e.pointerId;
-};
-
-const dragStart = (e: DragEvent) => {
-  if (activePointerId.value !== null) {
-    e.dataTransfer?.setData("text/plain", activePointerId.value.toString());
-  }
-  gripX.value = e.offsetX;
-  gripY.value = e.offsetY - bubbleAreaHeight;
-};
-
-const dragEnd = () => {
-  activePointerId.value = null;
-};
 // キャラクターの画像が変化した時
 const sizeUpdated = (e: { id: string; width: number; height: number }) => {
   usersStore.updateUserSize(e.id, e.width, e.height);
