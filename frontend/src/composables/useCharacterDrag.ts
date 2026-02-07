@@ -21,11 +21,7 @@ export interface CharacterDragContext {
   /** ドラッグ中フラグ */
   isDragging: Ref<boolean>;
   /** pointerdown ハンドラ — テンプレートから呼ぶ */
-  onPointerDown: (
-    e: PointerEvent,
-    id: string,
-    user: { dispX: number; dispY: number },
-  ) => void;
+  onPointerDown: (e: PointerEvent, id: string, user: { dispX: number; dispY: number }) => void;
   /** 手動クリーンアップ */
   cleanup: () => void;
 }
@@ -47,11 +43,7 @@ export function useCharacterDrag(options: {
   let startClientX = 0;
   let startClientY = 0;
 
-  function onPointerDown(
-    e: PointerEvent,
-    id: string,
-    user: { dispX: number; dispY: number },
-  ) {
+  function onPointerDown(e: PointerEvent, id: string, user: { dispX: number; dispY: number }) {
     // 自分のキャラ以外はドラッグしない
     if (!options.isMine(id)) return;
 
@@ -69,14 +61,13 @@ export function useCharacterDrag(options: {
           y: moveEvent.clientY - startClientY,
         };
       },
-      onEnd(_reason) {
+      onEnd() {
         // 最終座標 = 開始時の表示座標 + 累計オフセット
         const finalX = startDispX + dragOffset.value.x;
         const finalY = startDispY + dragOffset.value.y;
 
         // リセット（setXY の前にやることで、store 更新 → テンプレート再描画時にオフセットが消える）
-        const hadDrag =
-          dragOffset.value.x !== 0 || dragOffset.value.y !== 0;
+        const hadDrag = dragOffset.value.x !== 0 || dragOffset.value.y !== 0;
         draggingId.value = null;
         dragOffset.value = { x: 0, y: 0 };
 
