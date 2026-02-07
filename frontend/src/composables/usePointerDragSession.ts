@@ -86,11 +86,15 @@ export function usePointerDragSession(): DragSession {
     callbacks = cbs;
     isDragging.value = true;
 
-    // setPointerCapture (JSDOM 互換ガード)
+    // setPointerCapture (JSDOM 互換ガード + 実ブラウザ例外ガード)
     const el = e.currentTarget as HTMLElement | null;
     if (el && typeof el.setPointerCapture === "function") {
-      el.setPointerCapture(e.pointerId);
-      capturedEl = el;
+      try {
+        el.setPointerCapture(e.pointerId);
+        capturedEl = el;
+      } catch {
+        /* pointerId が無効な場合（テスト環境等）は capture なしで続行 */
+      }
     }
 
     // global listeners (capture phase で安定受信)

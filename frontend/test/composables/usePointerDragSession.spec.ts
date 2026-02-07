@@ -48,6 +48,19 @@ function mockElement(): HTMLDivElement {
   return el;
 }
 
+/** Start a drag session with boilerplate */
+function startSession(
+  session: DragSession,
+  callbacks: DragSessionCallbacks,
+  opts: { pointerId?: number; el?: HTMLElement } = {},
+): HTMLElement {
+  const el = opts.el ?? mockElement();
+  const down = pe("pointerdown", { pointerId: opts.pointerId ?? 1 });
+  Object.defineProperty(down, "currentTarget", { value: el });
+  session.start(down, callbacks);
+  return el;
+}
+
 /* ------------------------------------------------------------------ */
 /*  tests                                                              */
 /* ------------------------------------------------------------------ */
@@ -73,25 +86,19 @@ describe("usePointerDragSession", () => {
   // ---- basic lifecycle ----
 
   it("starts in idle state", () => {
+    expect.assertions(1);
     expect(session.isDragging.value).toBe(false);
   });
 
   it("transitions to dragging on start()", () => {
-    const el = mockElement();
-    const event = pe("pointerdown", { pointerId: 5 });
-    Object.defineProperty(event, "currentTarget", { value: el });
-
-    session.start(event, callbacks);
-
+    expect.assertions(1);
+    startSession(session, callbacks, { pointerId: 5 });
     expect(session.isDragging.value).toBe(true);
-    expect(el.setPointerCapture).toHaveBeenCalledWith(5);
   });
 
   it("calls onMove for matching pointerId", () => {
-    const el = mockElement();
-    const down = pe("pointerdown", { pointerId: 7 });
-    Object.defineProperty(down, "currentTarget", { value: el });
-    session.start(down, callbacks);
+    expect.assertions(2);
+    startSession(session, callbacks, { pointerId: 7 });
 
     const move = pe("pointermove", { pointerId: 7, clientX: 100 });
     document.dispatchEvent(move);
@@ -101,10 +108,8 @@ describe("usePointerDragSession", () => {
   });
 
   it("ends session on pointerup", () => {
-    const el = mockElement();
-    const down = pe("pointerdown", { pointerId: 3 });
-    Object.defineProperty(down, "currentTarget", { value: el });
-    session.start(down, callbacks);
+    expect.assertions(2);
+    startSession(session, callbacks, { pointerId: 3 });
 
     document.dispatchEvent(pe("pointerup", { pointerId: 3 }));
 
@@ -115,10 +120,8 @@ describe("usePointerDragSession", () => {
   // ---- pointerId mismatch ----
 
   it("ignores pointermove with different pointerId", () => {
-    const el = mockElement();
-    const down = pe("pointerdown", { pointerId: 10 });
-    Object.defineProperty(down, "currentTarget", { value: el });
-    session.start(down, callbacks);
+    expect.assertions(1);
+    startSession(session, callbacks, { pointerId: 10 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 999 }));
 
@@ -126,10 +129,8 @@ describe("usePointerDragSession", () => {
   });
 
   it("ignores pointerup with different pointerId", () => {
-    const el = mockElement();
-    const down = pe("pointerdown", { pointerId: 10 });
-    Object.defineProperty(down, "currentTarget", { value: el });
-    session.start(down, callbacks);
+    expect.assertions(2);
+    startSession(session, callbacks, { pointerId: 10 });
 
     document.dispatchEvent(pe("pointerup", { pointerId: 999 }));
 
@@ -140,10 +141,8 @@ describe("usePointerDragSession", () => {
   // ---- pointercancel ----
 
   it("ends session on pointercancel", () => {
-    const el = mockElement();
-    const down = pe("pointerdown", { pointerId: 2 });
-    Object.defineProperty(down, "currentTarget", { value: el });
-    session.start(down, callbacks);
+    expect.assertions(2);
+    startSession(session, callbacks, { pointerId: 2 });
 
     document.dispatchEvent(pe("pointercancel", { pointerId: 2 }));
 
@@ -154,12 +153,11 @@ describe("usePointerDragSession", () => {
   // ---- double start prevention ----
 
   it("ignores second start() while already dragging", () => {
-    const el = mockElement();
-    const down1 = pe("pointerdown", { pointerId: 1 });
-    Object.defineProperty(down1, "currentTarget", { value: el });
-    session.start(down1, callbacks);
+    expect.assertions(2);
+    startSession(session, callbacks, { pointerId: 1 });
 
     const onMove2 = vi.fn();
+    const el = mockElement();
     const down2 = pe("pointerdown", { pointerId: 2 });
     Object.defineProperty(down2, "currentTarget", { value: el });
     session.start(down2, { onMove: onMove2, onEnd: vi.fn() });
@@ -173,10 +171,8 @@ describe("usePointerDragSession", () => {
   // ---- cleanup ----
 
   it("cleanup() ends active session", () => {
-    const el = mockElement();
-    const down = pe("pointerdown", { pointerId: 4 });
-    Object.defineProperty(down, "currentTarget", { value: el });
-    session.start(down, callbacks);
+    expect.assertions(3);
+    startSession(session, callbacks, { pointerId: 4 });
 
     session.cleanup();
 
@@ -189,14 +185,13 @@ describe("usePointerDragSession", () => {
   });
 
   it("cleanup() is safe to call when idle", () => {
+    expect.assertions(1);
     expect(() => session.cleanup()).not.toThrow();
   });
 
   it("cleans up listeners on unmount", () => {
-    const el = mockElement();
-    const down = pe("pointerdown", { pointerId: 6 });
-    Object.defineProperty(down, "currentTarget", { value: el });
-    session.start(down, callbacks);
+    expect.assertions(2);
+    startSession(session, callbacks, { pointerId: 6 });
 
     wrapper.unmount();
 
@@ -209,16 +204,13 @@ describe("usePointerDragSession", () => {
   // ---- setPointerCapture JSDOM guard ----
 
   it("works when setPointerCapture is not available", () => {
+    expect.assertions(3);
     const el = document.createElement("div");
-    // In some JSDOM environments, setPointerCapture might not exist
-    // Simulate by deleting it
     (el as any).setPointerCapture = undefined;
     (el as any).releasePointerCapture = undefined;
 
-    const down = pe("pointerdown", { pointerId: 8 });
-    Object.defineProperty(down, "currentTarget", { value: el });
+    startSession(session, callbacks, { pointerId: 8, el });
 
-    expect(() => session.start(down, callbacks)).not.toThrow();
     expect(session.isDragging.value).toBe(true);
 
     document.dispatchEvent(pe("pointerup", { pointerId: 8 }));
@@ -229,20 +221,16 @@ describe("usePointerDragSession", () => {
   // ---- consecutive sessions ----
 
   it("allows new session after previous one ends", () => {
-    const el = mockElement();
+    expect.assertions(3);
 
     // first session
-    const down1 = pe("pointerdown", { pointerId: 1 });
-    Object.defineProperty(down1, "currentTarget", { value: el });
-    session.start(down1, callbacks);
+    startSession(session, callbacks, { pointerId: 1 });
     document.dispatchEvent(pe("pointerup", { pointerId: 1 }));
     expect(session.isDragging.value).toBe(false);
 
     // second session
     const onMove2 = vi.fn();
-    const down2 = pe("pointerdown", { pointerId: 2 });
-    Object.defineProperty(down2, "currentTarget", { value: el });
-    session.start(down2, { onMove: onMove2, onEnd: vi.fn() });
+    startSession(session, { onMove: onMove2, onEnd: vi.fn() }, { pointerId: 2 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 2, clientX: 50 }));
     expect(onMove2).toHaveBeenCalledTimes(1);

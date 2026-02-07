@@ -85,30 +85,34 @@ describe("useCharacterDrag", () => {
   // ---- initial state ----
 
   it("starts with no drag active", () => {
+    expect.assertions(3);
     expect(ctx.draggingId.value).toBeNull();
-    expect(ctx.dragOffset.value).toEqual({ x: 0, y: 0 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 0, y: 0 });
     expect(ctx.isDragging.value).toBe(false);
   });
 
   // ---- basic drag flow ----
 
   it("sets draggingId on pointerdown", () => {
+    expect.assertions(3);
     startDrag(ctx, "user-1", { dispX: 50, dispY: 300 });
 
     expect(ctx.draggingId.value).toBe("user-1");
     expect(ctx.isDragging.value).toBe(true);
-    expect(ctx.dragOffset.value).toEqual({ x: 0, y: 0 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 0, y: 0 });
   });
 
   it("updates dragOffset on pointermove", () => {
+    expect.assertions(1);
     startDrag(ctx, "user-1", { dispX: 50, dispY: 300 }, { clientX: 100, clientY: 200 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 1, clientX: 130, clientY: 250 }));
 
-    expect(ctx.dragOffset.value).toEqual({ x: 30, y: 50 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 30, y: 50 });
   });
 
   it("calls setXY with final position on pointerup", () => {
+    expect.assertions(3);
     startDrag(ctx, "user-1", { dispX: 50, dispY: 300 }, { clientX: 100, clientY: 200 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 1, clientX: 160, clientY: 220 }));
@@ -118,12 +122,13 @@ describe("useCharacterDrag", () => {
     // finalY = dispY(300) + offsetY(20) = 320
     expect(setXY).toHaveBeenCalledWith(110, 320);
     expect(ctx.draggingId.value).toBeNull();
-    expect(ctx.dragOffset.value).toEqual({ x: 0, y: 0 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 0, y: 0 });
   });
 
   // ---- no movement = no setXY ----
 
   it("does not call setXY if no movement occurred (click)", () => {
+    expect.assertions(2);
     startDrag(ctx, "user-1", { dispX: 50, dispY: 300 });
 
     document.dispatchEvent(pe("pointerup", { pointerId: 1 }));
@@ -135,6 +140,7 @@ describe("useCharacterDrag", () => {
   // ---- isMine guard ----
 
   it("ignores pointerdown on other users' characters", () => {
+    expect.assertions(2);
     const isMine = (id: string) => id === "me";
     wrapper.unmount();
     ({ wrapper, ctx } = mountDrag({ isMine, setXY }));
@@ -147,30 +153,32 @@ describe("useCharacterDrag", () => {
 
   // ---- pointercancel ----
 
-  it("resets state on pointercancel without calling setXY", () => {
+  it("resets state on pointercancel", () => {
+    expect.assertions(2);
     startDrag(ctx, "user-1", { dispX: 50, dispY: 300 }, { clientX: 100, clientY: 200 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 1, clientX: 130, clientY: 250 }));
     document.dispatchEvent(pe("pointercancel", { pointerId: 1 }));
 
-    // pointercancel still commits if there was movement (same as pointerup behavior)
     expect(ctx.draggingId.value).toBeNull();
-    expect(ctx.dragOffset.value).toEqual({ x: 0, y: 0 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 0, y: 0 });
   });
 
   // ---- pointerId mismatch ----
 
   it("ignores pointermove with mismatched pointerId", () => {
+    expect.assertions(1);
     startDrag(ctx, "user-1", { dispX: 50, dispY: 300 }, { pointerId: 5, clientX: 100, clientY: 200 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 999, clientX: 500, clientY: 500 }));
 
-    expect(ctx.dragOffset.value).toEqual({ x: 0, y: 0 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 0, y: 0 });
   });
 
   // ---- consecutive drags ----
 
   it("does not carry over offset from previous drag", () => {
+    expect.assertions(4);
     // first drag: move right 60px
     startDrag(ctx, "user-1", { dispX: 50, dispY: 300 }, { pointerId: 1, clientX: 100, clientY: 200 });
     document.dispatchEvent(pe("pointermove", { pointerId: 1, clientX: 160, clientY: 200 }));
@@ -182,10 +190,10 @@ describe("useCharacterDrag", () => {
     // second drag: should start from fresh offset
     startDrag(ctx, "user-1", { dispX: 110, dispY: 300 }, { pointerId: 2, clientX: 200, clientY: 300 });
 
-    expect(ctx.dragOffset.value).toEqual({ x: 0, y: 0 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 0, y: 0 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 2, clientX: 210, clientY: 310 }));
-    expect(ctx.dragOffset.value).toEqual({ x: 10, y: 10 });
+    expect(ctx.dragOffset.value).toStrictEqual({ x: 10, y: 10 });
 
     document.dispatchEvent(pe("pointerup", { pointerId: 2 }));
     expect(setXY).toHaveBeenCalledWith(120, 310);
@@ -194,6 +202,7 @@ describe("useCharacterDrag", () => {
   // ---- negative movement ----
 
   it("handles negative drag offsets (dragging left/up)", () => {
+    expect.assertions(1);
     startDrag(ctx, "user-1", { dispX: 200, dispY: 400 }, { clientX: 300, clientY: 500 });
 
     document.dispatchEvent(pe("pointermove", { pointerId: 1, clientX: 250, clientY: 450 }));
